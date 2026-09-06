@@ -68,7 +68,7 @@ uv tool install zeline
 只需一行，而且不需要任何现成的 Python 工具链——它会为你准备一个私有环境：
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 ```
 
 然后运行 `zeline setup`。安装脚本会自行下载带版本号的 wheel，并在安装前对照
@@ -80,25 +80,10 @@ curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/r
 ### Windows PowerShell
 
 ```powershell
-iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.ps1 -OutFile install.ps1; .\install.ps1
+iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 然后运行 `zeline setup`。
-
-### npm（Node.js ≥ 18）
-
-如果你已使用 npm，封装器会在首次运行时自动完成同样的已校验 wheel 安装
-——无需 `curl` 或 `iwr`：
-
-```sh
-npm install -g zeline
-zeline setup
-```
-
-封装器会检测 `PATH` 中的 Python 3.10+，从 GitHub 发布下载同一版本的
-wheel 与 `SHA256SUMS`，校验校验和，并安装到同一个私有运行时
-（`~/.local/share/zeline`）。上方的 `curl` 与 `iwr` 路径仍适用于
-没有 Node.js 的机器。
 
 ### 独立验证（可选）
 

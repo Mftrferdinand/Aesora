@@ -17,13 +17,11 @@ Then `zeline setup`.
 One line on every POSIX platform — Termux, Linux, macOS, iSH:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 ```
 
 The installer downloads the versioned wheel and verifies it against
-`SHA256SUMS` itself, so there is nothing to check by hand. Node.js users can
-also run `npm install -g zeline`; the npm wrapper verifies the same wheel and
-installs it into the same private runtime.
+`SHA256SUMS` itself, so there is nothing to check by hand.
 
 Every release carries the whole bundled surface — this one ships **255 skills**
 (109 of them the Zenith corpus) and **29 tools** — and the release workflow now
@@ -120,7 +118,7 @@ default for installs that never set it.
 
 ### Installation
 
-See the [installation guide](https://github.com/Mftrferdinand/Zeline/blob/v0.3.1/docs/installation.md) for install commands on every supported platform, and the [changelog](https://github.com/Mftrferdinand/Zeline/blob/v0.3.1/CHANGELOG.md) for the full list of changes with links to every pull request.
+See the [installation guide](https://github.com/Mftrferdinand/Zeline/blob/v0.3.2/docs/installation.md) for install commands on every supported platform, and the [changelog](https://github.com/Mftrferdinand/Zeline/blob/v0.3.2/CHANGELOG.md) for the full list of changes with links to every pull request.
 
 ### Assets
 

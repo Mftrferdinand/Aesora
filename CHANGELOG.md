@@ -10,6 +10,26 @@ release's documented one-liner keeps working after a newer release ships.
 
 ## [Unreleased]
 
+## [0.3.2] — 2026-09-06
+
+### Changed
+
+- Removed the `npm install -g zeline` route and its wrapper package
+  (`bin/install.js`, `bin/zeline.js`, `package.json`, `README.npm.md`,
+  `.npmignore`). The npm wrapper added a third install path whose complexity
+  was not justified — `pip install zeline` (PyPI) and `curl install.sh` /
+  `iwr install.ps1` cover every platform. The `Node.js 18+` requirement in
+  the docs now refers only to the WhatsApp gateway, not to the Zeline install.
+  Documentation across README, installation guide, and both localized readmes
+  was simplified to three routes: PyPI (recommended), curl/iwr (fallback).
+
+### Added
+
+- Windows Defender / antivirus troubleshooting section in the installation
+  guide. ML-based antivirus engines commonly flag freshly-created Python
+  runtime directories; the new section explains why this is a false positive,
+  how to whitelist the Zeline folders, and where to find upstream context.
+
 ## [0.3.1] — 2026-09-06
 
 ### Added
@@ -281,7 +301,8 @@ release's documented one-liner keeps working after a newer release ships.
 Release notes for 0.2.5 and earlier are on the
 [releases page](https://github.com/Mftrferdinand/Zeline/releases).
 
-[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.1...main
+[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.2...main
+[0.3.2]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.2
 [0.3.1]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.0
 [0.2.9]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.9

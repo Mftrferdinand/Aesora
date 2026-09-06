@@ -71,7 +71,7 @@ One line, and it needs no existing Python tooling — it provisions a private
 environment for you:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 ```
 
 Then `zeline setup`. The installer downloads the versioned wheel and verifies it
@@ -81,25 +81,10 @@ hand. On iSH, run `apk add bash curl python3` first.
 ### Windows PowerShell
 
 ```powershell
-iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.ps1 -OutFile install.ps1; .\install.ps1
+iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 Then `zeline setup`.
-
-### npm (any platform with Node.js ≥ 18)
-
-If you already use npm, the wrapper does the same verified wheel install on
-first run — no `curl` or `iwr` needed:
-
-```sh
-npm install -g zeline
-zeline setup
-```
-
-The wrapper detects Python 3.10+ on your `PATH`, downloads the same versioned
-wheel and `SHA256SUMS` from the GitHub release, verifies the checksum, and
-installs into the same private runtime (`~/.local/share/zeline`). See
-[`README.npm.md`](README.npm.md) for details.
 
 ### Verify the download independently (optional)
 
