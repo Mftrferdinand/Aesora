@@ -590,6 +590,7 @@ def _run_shell(command: str, workspace: Path, timeout: Any = None, background: A
                 **DETACH_KWARGS,
             )
         except Exception as exc:
+            handle.close()
             return f"ERROR starting background command: {exc}"
         _BG_JOBS[job_id] = _BackgroundJob(
             job_id=job_id,
@@ -1296,24 +1297,6 @@ def _html_to_text(raw: bytes) -> str:
     text = re.sub(r"[ \t\r\f\v]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n\n", text)
     return text.strip()
-
-
-def _parse_ddg_html(html_text: str) -> list[str]:
-    """Ambil hasil (judul + url + snippet) dari HTML DuckDuckGo."""
-    results: list[str] = []
-    for match in re.finditer(
-        r'<a[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>(.*?)</a>.*?(?:result__snippet"[^>]*>(.*?)</a>)?',
-        html_text,
-        re.S,
-    ):
-        url, title, snippet = match.group(1), match.group(2), match.group(3) or ""
-        title = re.sub(r"(?s)<[^>]+>", "", title).strip()
-        snippet = re.sub(r"(?s)<[^>]+>", "", snippet).strip()
-        if title:
-            results.append(f"- {title}\n  {snippet[:300]}")
-        if len(results) >= WEB_MAX_RESULTS:
-            break
-    return results
 
 
 def _search_gnews(query: str) -> list[tuple[str, str]]:
