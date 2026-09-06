@@ -19,6 +19,7 @@ from zeline import __version__, config
 from zeline import compaction
 from zeline import tasks
 from zeline import skills
+from zeline import lessons
 from zeline.tools import ToolExecutor
 from zeline import project_rules
 from zeline import tool_protocol
@@ -234,6 +235,7 @@ class Zeline:
         return (
             config.SYSTEM_PROMPT
             + self.executor.memory.prompt_block()
+            + lessons.lessons_block(self.identity)
             + skills.skills_block(include_private=self.executor.profile == "full")
             # Project conventions from ZELINE.md/AGENTS.md in the workspace. Read
             # once here so the system prompt stays byte-stable for the life of the

@@ -1,0 +1,325 @@
+"""Persistent lessons from tool failures — the "don't repeat this" store.
+
+events.py records *what* happened (the audit trail). This module records
+*what was learned from it failing* — a short, per-identity table of
+(tool, what_went_wrong, what_to_do_instead) that is injected into the
+system prompt so the agent stops walking into the same wall.
+
+Design, stated plainly:
+
+- **Auto-captured, not model-decided.** When a tool returns ``ERROR``, the
+  executor records the failure here *before* the model sees the result. The
+  model does not have to elect to save anything — the failure is already
+  on file. The ``fix`` field is filled later, when the same problem is
+  solved (the model calls a different approach and it succeeds).
+- **Per-identity, hashed.** Same SHA-256 key scheme as memory/events, so
+  ``telegram:123`` cannot read ``telegram:456``'s lessons.
+- **Best-effort, never raises.** A locked or unwritable DB loses one lesson
+  row, which is strictly better than losing the user's answer.
+- **Bounded.** Max 50 lessons per identity; oldest pruned. A lesson that
+  was never followed up on for 30 days is expired by the same ``_live``
+  mechanism memory uses.
+- **Provenance.** Each lesson carries a ``status``: ``unresolved`` (the
+  failure happened, no fix known yet) or ``resolved`` (a fix was found and
+  recorded). Only ``resolved`` lessons are injected into the prompt —
+  unresolved ones are data, not guidance.
+
+The prompt block from this module is injected alongside memory's prompt
+block, but with a distinct header and framing: memory is *facts*, lessons
+are *corrections* — "DO this / DON'T do that."
+"""
+from __future__ import annotations
+
+import hashlib
+import os
+import sqlite3
+import threading
+import time
+from contextlib import closing
+from pathlib import Path
+from typing import Any
+
+from zeline import config
+
+_LOCK = threading.Lock()
+
+#: Lessons DB — separate from events.db so the audit trail and the
+#: learning store can be pruned/inspected independently.
+_DB_PATH = config.DATA_DIR / "lessons.db"
+
+#: Max lessons per identity. Old lessons are pruned by ts.
+MAX_LESSONS_PER_IDENTITY = 50
+
+#: Lessons older than this (seconds) with no resolution are expired.
+LESSON_TTL = 30 * 24 * 3600  # 30 days
+
+#: Max length of the error/fix text stored — keep it short, it goes into
+#: the prompt.
+_MAX_TEXT = 300
+
+
+def _key(identity: str) -> str:
+    return hashlib.sha256((identity or "cli:local").encode("utf-8")).hexdigest()[:32]
+
+
+def _args_signature(tool: str, args: dict[str, Any]) -> str:
+    """A short, safe signature of the call — not the full args.
+
+    e.g. ``write_file(path=/foo.py)`` or ``edit_file(path=/bar.py, action=replace)``.
+    Enough to recognise the pattern, not enough to leak secrets.
+    """
+    if not isinstance(args, dict):
+        return tool
+    parts = []
+    for key in ("path", "action", "name", "method", "url", "command"):
+        val = str(args.get(key, "")).strip()
+        if val:
+            # Truncate: enough to identify, not enough to leak.
+            val = val[:80]
+            parts.append(f"{key}={val}")
+    sig = ", ".join(parts)
+    return f"{tool}({sig})" if sig else tool
+
+
+class LessonsStore:
+    """SQLite-backed lessons-from-failure store. Degrades, never raises."""
+
+    def __init__(self, path: Path | None = None) -> None:
+        self.path = path or _DB_PATH
+        self._ensure_schema()
+
+    def _connect(self) -> sqlite3.Connection:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(self.path), timeout=10)
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.Error:
+            conn.close()
+            raise
+        return conn
+
+    def _ensure_schema(self) -> None:
+        try:
+            with _LOCK, closing(self._connect()) as conn, conn:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS lessons ("
+                    "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    "  key TEXT NOT NULL,"
+                    "  tool TEXT NOT NULL,"
+                    "  args_sig TEXT NOT NULL,"
+                    "  error TEXT,"
+                    "  fix TEXT,"
+                    "  status TEXT NOT NULL DEFAULT 'unresolved',"
+                    "  ts REAL NOT NULL,"
+                    "  resolved_ts REAL"
+                    ")"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_lessons_key ON lessons(key, ts)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_lessons_status ON lessons(key, status)"
+                )
+        except sqlite3.Error:
+            return
+        try:
+            self.path.chmod(0o600)
+        except OSError:
+            pass
+
+    def record_failure(
+        self,
+        identity: str,
+        tool: str,
+        args: dict[str, Any],
+        error: str,
+        ts: float | None = None,
+    ) -> bool:
+        """Auto-capture a tool failure. Returns True if stored, False on any error.
+
+        Deduplicates: if the same (tool, args_sig, error) was recorded in the
+        last hour, skip — the agent is in a retry loop, not learning a new
+        lesson.
+        """
+        moment = time.time() if ts is None else ts
+        sig = _args_signature(tool, args)
+        err = str(error or "")[:_MAX_TEXT]
+        try:
+            with _LOCK, closing(self._connect()) as conn, conn:
+                # Dedup: same failure in the last hour = retry, not new lesson.
+                recent = conn.execute(
+                    "SELECT id FROM lessons WHERE key = ? AND tool = ? AND args_sig = ? AND error = ? AND ts > ?",
+                    (_key(identity), str(tool), sig, err, moment - 3600),
+                ).fetchone()
+                if recent:
+                    return False
+                conn.execute(
+                    "INSERT INTO lessons (key, tool, args_sig, error, fix, status, ts) "
+                    "VALUES (?, ?, ?, ?, NULL, 'unresolved', ?)",
+                    (_key(identity), str(tool), sig, err, moment),
+                )
+                # Prune oldest beyond the cap.
+                conn.execute(
+                    "DELETE FROM lessons WHERE key = ? AND id NOT IN "
+                    "(SELECT id FROM lessons WHERE key = ? ORDER BY ts DESC LIMIT ?)",
+                    (_key(identity), _key(identity), MAX_LESSONS_PER_IDENTITY),
+                )
+            return True
+        except (sqlite3.Error, OSError, ValueError, TypeError):
+            return False
+
+    def record_fix(
+        self,
+        identity: str,
+        tool: str,
+        args_sig_contains: str,
+        fix: str,
+    ) -> bool:
+        """Mark the most recent unresolved lesson matching the signature as resolved.
+
+        Called when the model retries a failed approach with a different
+        strategy and it works. The ``fix`` text is what the model should do
+        next time instead.
+        """
+        fix_text = str(fix or "").strip()[:_MAX_TEXT]
+        if not fix_text:
+            return False
+        try:
+            with _LOCK, closing(self._connect()) as conn, conn:
+                row = conn.execute(
+                    "SELECT id FROM lessons WHERE key = ? AND tool = ? AND args_sig LIKE ? AND status = 'unresolved' "
+                    "ORDER BY ts DESC LIMIT 1",
+                    (_key(identity), str(tool), f"%{args_sig_contains}%"),
+                ).fetchone()
+                if not row:
+                    return False
+                conn.execute(
+                    "UPDATE lessons SET status = 'resolved', fix = ?, resolved_ts = ? WHERE id = ?",
+                    (fix_text, time.time(), row[0]),
+                )
+            return True
+        except (sqlite3.Error, OSError, ValueError, TypeError):
+            return False
+
+    def resolved(self, identity: str, limit: int = 10) -> list[dict[str, Any]]:
+        """Resolved lessons for prompt injection — newest fixes first."""
+        cutoff = time.time() - LESSON_TTL
+        try:
+            with _LOCK, closing(self._connect()) as conn, conn:
+                rows = conn.execute(
+                    "SELECT tool, args_sig, error, fix, ts, resolved_ts FROM lessons "
+                    "WHERE key = ? AND status = 'resolved' AND resolved_ts > ? "
+                    "ORDER BY resolved_ts DESC LIMIT ?",
+                    (_key(identity), cutoff, max(1, int(limit))),
+                ).fetchall()
+        except sqlite3.Error:
+            return []
+        return [
+            {
+                "tool": str(r[0]),
+                "args_sig": str(r[1]),
+                "error": str(r[2] or ""),
+                "fix": str(r[3] or ""),
+                "ts": float(r[4] or 0.0),
+                "resolved_ts": float(r[5] or 0.0),
+            }
+            for r in rows
+        ]
+
+    def unresolved(self, identity: str, limit: int = 5) -> list[dict[str, Any]]:
+        """Unresolved failures — data for the operator, not for the prompt."""
+        try:
+            with _LOCK, closing(self._connect()) as conn, conn:
+                rows = conn.execute(
+                    "SELECT tool, args_sig, error, ts FROM lessons "
+                    "WHERE key = ? AND status = 'unresolved' "
+                    "ORDER BY ts DESC LIMIT ?",
+                    (_key(identity), max(1, int(limit))),
+                ).fetchall()
+        except sqlite3.Error:
+            return []
+        return [
+            {
+                "tool": str(r[0]),
+                "args_sig": str(r[1]),
+                "error": str(r[2] or ""),
+                "ts": float(r[3] or 0.0),
+            }
+            for r in rows
+        ]
+
+    def prompt_block(self, identity: str) -> str:
+        """Inject resolved lessons as corrections — 'DO this / DON'T do that.'
+
+        Framed distinctly from memory's prompt_block: memory is *facts*,
+        lessons are *behavioral corrections from past failures*. Only
+        resolved lessons are injected — unresolved ones are not guidance.
+        """
+        lessons = self.resolved(identity, limit=8)
+        if not lessons:
+            return ""
+        lines = []
+        for lesson in lessons:
+            err_short = lesson["error"][:120]
+            fix_short = lesson["fix"][:120]
+            lines.append(f"- {lesson['tool']}: DON'T repeat \"{err_short}\" → DO: {fix_short}")
+        corrections = "\n".join(lines)
+        return (
+            "\n\n## Lessons from past failures (behavioral corrections)\n"
+            "These are mistakes you made in previous sessions and the fixes "
+            "that worked. Follow the DO guidance when you encounter a similar "
+            "situation.\n"
+            "<lessons>\n"
+            f"{corrections}\n"
+            "</lessons>\n"
+        )
+
+    def counts(self, identity: str) -> dict[str, int]:
+        """How many resolved/unresolved lessons exist for this identity."""
+        try:
+            with _LOCK, closing(self._connect()) as conn, conn:
+                rows = conn.execute(
+                    "SELECT status, COUNT(*) FROM lessons WHERE key = ? GROUP BY status",
+                    (_key(identity),),
+                ).fetchall()
+        except sqlite3.Error:
+            return {}
+        return {str(status): int(count or 0) for status, count in rows}
+
+
+# Module-level singleton, like EventLog.
+_store: LessonsStore | None = None
+
+
+def _get_store() -> LessonsStore:
+    global _store
+    if _store is None:
+        _store = LessonsStore()
+    return _store
+
+
+def log_failure(
+    identity: str,
+    tool: str,
+    args: dict[str, Any],
+    result: str,
+) -> None:
+    """Auto-capture a tool failure into the lessons store. Best-effort, silent.
+
+    Called from the tool executor when a tool returns ERROR. This is the
+    automatic capture path — the model does not have to decide to save it.
+    """
+    if not str(result).startswith("ERROR"):
+        return
+    try:
+        _get_store().record_failure(identity, tool, args, result)
+    except Exception:
+        pass
+
+
+def lessons_block(identity: str = "cli:local") -> str:
+    """Prompt block of resolved lessons for the given identity."""
+    try:
+        return _get_store().prompt_block(identity)
+    except Exception:
+        return ""

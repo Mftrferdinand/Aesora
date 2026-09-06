@@ -2827,6 +2827,9 @@ class ToolExecutor:
     def _audit(self, name: str, args: dict[str, Any], result: str) -> None:
         """Record a mutating tool call to the append-only event log.
 
+        Also auto-captures failures into the lessons store so the agent
+        learns from its mistakes without needing the model to elect to save.
+
         Best-effort and swallowed: an audit failure must never turn a successful
         tool call into a failed one. Read-only tools are skipped inside
         ``log_tool_call`` so this stays a side-effect index, not an activity log.
@@ -2835,6 +2838,15 @@ class ToolExecutor:
             events_module.log_tool_call(self.identity, name, args if isinstance(args, dict) else {}, result)
         except Exception:
             pass
+        # Auto-capture tool failures for the lessons store. Unlike the audit
+        # trail (which only logs mutating tools), lessons capture ALL errors —
+        # a read_file failure teaches "this path doesn't exist" too.
+        if str(result).startswith("ERROR"):
+            try:
+                from zeline import lessons as lessons_module
+                lessons_module.log_failure(self.identity, name, args if isinstance(args, dict) else {}, result)
+            except Exception:
+                pass
 
     def _dispatch(self, name: str, args: dict[str, Any]) -> str:
         # tool_search is a discovery tool, not a capability: it only exists while
