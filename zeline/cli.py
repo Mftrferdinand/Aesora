@@ -255,17 +255,13 @@ def _read_menu_key() -> str:
     return read_menu_key()
 
 
-def _gateway_label(label: str) -> str:
-    """'[•] Telegram' on a capable terminal, '[*] Telegram' on legacy."""
-    return f"{branding.marker()} {label}"
-
-
 def _select_gateway() -> str:
     """Arrow-key gateway picker with numeric fallback for redirected stdin."""
+    bullet = branding.marker()
     if not sys.stdin.isatty():
         print("Select gateway:")
         for index, (_value, label) in enumerate(GATEWAY_OPTIONS, 1):
-            print(f"  {index}. {_gateway_label(label)}")
+            print(f"  {index}. {bullet} {label}")
         while True:
             answer = input(f"Choice [1-{len(GATEWAY_OPTIONS)}]: ").strip()
             if answer.isdigit() and 1 <= int(answer) <= len(GATEWAY_OPTIONS):
@@ -279,8 +275,8 @@ def _select_gateway() -> str:
         try:
             while True:
                 for index, (_value, label) in enumerate(GATEWAY_OPTIONS):
-                    marker = _paint(chevron, COLOR_BLUE) if index == selected else " "
-                    print(f"\r\033[K  {marker} {_gateway_label(label)}")
+                    cursor = _paint(chevron, COLOR_BLUE) if index == selected else " "
+                    print(f"\r\033[K  {cursor} {bullet} {label}")
                 key = _read_menu_key()
                 if key == "up":
                     selected = (selected - 1) % len(GATEWAY_OPTIONS)
@@ -549,15 +545,10 @@ def cmd_setup_center() -> int:
     """Reconfigurable setup center; first-run onboarding remains `cmd_setup`."""
     _print_banner()
     print(f"==> SETUP CENTER  ·  {config.CONFIG_FILE}")
-    # A '[•]' bullet prefixes each section, degrading to '[*]' on a console that
-    # cannot encode the bullet (via branding.marker()).
-    bullet = branding.marker()
+    # _arrow_menu prefixes every row with the '[•]' bullet, so pass plain labels.
     sections = ["Gateway", "Model", "Tools", "Integrations", "Agent", "Done"]
     while True:
-        choice = _arrow_menu(
-            "Configure:",
-            [f"{bullet} {label}" for label in sections],
-        )
+        choice = _arrow_menu("Configure:", sections)
         if choice in {-1, 5}:
             print("Setup center done. Run `zeline doctor` to verify everything.")
             return 0
@@ -754,10 +745,11 @@ def _arrow_menu(title: str, options: list[str], *, start: int = 0) -> int:
     """
     if not options:
         return -1
+    bullet = branding.marker()
     if not sys.stdin.isatty():
         print(title)
         for index, label in enumerate(options, 1):
-            print(f"  {index}. {label}")
+            print(f"  {index}. {bullet} {label}")
         while True:
             answer = input(f"Choice [1-{len(options)}] (empty = cancel): ").strip()
             if not answer:
@@ -773,8 +765,8 @@ def _arrow_menu(title: str, options: list[str], *, start: int = 0) -> int:
         try:
             while True:
                 for index, label in enumerate(options):
-                    marker = _paint(chevron, COLOR_BLUE) if index == selected else " "
-                    print(f"\r\033[K  {marker} {label}")
+                    cursor = _paint(chevron, COLOR_BLUE) if index == selected else " "
+                    print(f"\r\033[K  {cursor} {bullet} {label}")
                 key = _read_menu_key()
                 if key == "up":
                     selected = (selected - 1) % len(options)
@@ -796,7 +788,7 @@ def cmd_model() -> int:
         return 2
     cfg = config.stored_config_copy()
     while True:
-        # Action menu (no emoji): add/remove/view provider, or cancel.
+        # Action menu (rows get the [•] bullet from _arrow_menu).
         rows = [
             "Add url provider",
             "Remove provider",
