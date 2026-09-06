@@ -122,6 +122,7 @@ def _telegram_commands() -> list[dict[str, str]]:
         {"command": "undo", "description": "List or restore file checkpoints"},
         {"command": "stats", "description": "View token usage"},
         {"command": "events", "description": "Recent file/skill/memory changes"},
+        {"command": "lessons", "description": "View self-learning lessons"},
         {"command": "stop", "description": "Stop the active turn"},
         {"command": "new", "description": "Start a new session"},
         {"command": "version", "description": "Show version and check for updates"},
@@ -298,6 +299,9 @@ def _tool_progress_text(name: str, arguments: dict[str, Any]) -> str:
             return f"🗑 Removing skill: <code>{skill_name}</code>"
         target = f" <code>{file_path}</code>" if file_path else ""
         return f"📝 Updating skill: <code>{skill_name}</code>{target}"
+    if name == "resolve_lesson":
+        tool = html.escape(str(arguments.get("tool", ""))[:60], quote=False)
+        return f"📒 Resolving lesson: <code>{tool}</code>" if tool else "📒 Resolving a lesson…"
     if name == "add_memory":
         return "🧠 Saving to memory…"
     if name == "remove_memory":
@@ -1521,6 +1525,46 @@ def _events_card(identity: str) -> str:
     return "\n".join(lines)
 
 
+def _lessons_card(identity: str) -> str:
+    """Lessons learned from tool failures — the agent's self-improvement store.
+
+    This is the operator-facing view of the lessons DB. It shows what the
+    agent learned from its mistakes: unresolved failures (still open) and
+    resolved lessons (fix found, injected into the system prompt).
+    """
+    from zeline import lessons as lessons_module
+
+    counts = lessons_module.lessons_summary(identity)
+    resolved = lessons_module.resolved_lessons(identity, limit=8)
+    unresolved = lessons_module.unresolved_lessons(identity, limit=5)
+    total_resolved = counts.get("resolved", 0)
+    total_unresolved = counts.get("unresolved", 0)
+
+    if not total_resolved and not total_unresolved:
+        return (
+            "📒 No lessons yet. When a tool fails and the agent retries "
+            "successfully, the lesson is captured here and injected into "
+            "the next session's system prompt automatically."
+        )
+
+    lines = ["╭───────────────📒", f"├ <b>Lessons</b> ({total_resolved} resolved, {total_unresolved} unresolved)"]
+    if resolved:
+        lines.append("├─ <b>Resolved</b> (injected into system prompt):")
+        for r in resolved:
+            tool = html.escape(str(r.get("tool", "")))
+            err = html.escape(str(r.get("error", ""))[:60])
+            fix = html.escape(str(r.get("fix", ""))[:60])
+            lines.append(f"├ ✓ <code>{tool}</code>: DON'T \"{err}\" → DO: {fix}")
+    if unresolved:
+        lines.append("├─ <b>Unresolved</b> (failure recorded, no fix yet):")
+        for u in unresolved:
+            tool = html.escape(str(u.get("tool", "")))
+            err = html.escape(str(u.get("error", ""))[:60])
+            lines.append(f"├ ✗ <code>{tool}</code>: {err}")
+    lines.append("╰ Auto-captured from tool failures. Resolved lessons guide future sessions.")
+    return "\n".join(lines)
+
+
 def _events_age(ts: float) -> str:
     """Compact age for an event row. Shares the checkpoint age vocabulary."""
     from zeline import checkpoints
@@ -1598,6 +1642,7 @@ def _handle_command_update(
                 "/undo — List or restore file checkpoints\n"
                 "/stats — View token usage\n"
                 "/events — Recent file/skill/memory changes\n"
+                "/lessons — View self-learning lessons\n"
                 "/stop — Stop the active turn\n"
                 "/new — Start a new session\n\n"
                 "Send a message to start a task"
@@ -1660,6 +1705,11 @@ def _handle_command_update(
     if command == "/events":
         refusal = _owner_only_reply("/events", chat_id, allowed)
         text = refusal if refusal is not None else _events_card(identity)
+        _api_call(api, "sendMessage", chat_id=chat_id, text=text, parse_mode="HTML")
+        return True
+    if command == "/lessons":
+        refusal = _owner_only_reply("/lessons", chat_id, allowed)
+        text = refusal if refusal is not None else _lessons_card(identity)
         _api_call(api, "sendMessage", chat_id=chat_id, text=text, parse_mode="HTML")
         return True
     if command == "/model" and not args.strip():
@@ -2533,7 +2583,7 @@ def _handle_command(text: str, sessions, identity: str, *, stop_event) -> str | 
     command, _, args = text.partition(" ")
     command, args = command.split("@", 1)[0].lower(), args.strip()
     if command in {"/start", "/help"}:
-        return "/status · /models · /model <id> · /undo · /stats · /events · /version · /update · /new · /restart · /stop · /logs"
+        return "/status · /models · /model <id> · /undo · /stats · /events · /lessons · /version · /update · /new · /restart · /stop · /logs"
     if command == "/status":
         return f"Zeline active\nModel: `{config.MODEL}`\nProvider: `{config.BASE_URL}`\nSession: `{identity}`\nCached: {sessions.count()}"
     if command == "/models":

@@ -152,6 +152,41 @@ class LessonsStoreTests(unittest.TestCase):
         unresolved = store.unresolved("telegram:owner")
         self.assertTrue(any(u["tool"] == "read_file" for u in unresolved))
 
+    def test_same_signature_success_auto_resolves_failure(self):
+        store = self.lessons.LessonsStore()
+        identity = "cli:retry-same"
+        args = {"path": "recover.txt"}
+        store.record_failure(identity, "read_file", args, "ERROR: file not found")
+        self.assertTrue(store.record_fix_auto(identity, "read_file", args))
+        self.assertEqual(store.counts(identity), {"resolved": 1})
+        self.assertIn("same args", store.resolved(identity)[0]["fix"])
+
+    def test_different_signature_success_does_not_resolve_old_failure(self):
+        store = self.lessons.LessonsStore()
+        identity = "cli:retry-different"
+        store.record_failure(identity, "read_file", {"path": "missing.txt"}, "ERROR: file not found")
+        self.assertFalse(store.record_fix_auto(identity, "read_file", {"path": "other.txt"}))
+        self.assertEqual(store.counts(identity), {"unresolved": 1})
+
+    def test_signatures_redact_credentials_and_url_queries(self):
+        sig = self.lessons._args_signature(
+            "http_request",
+            {"url": "https://example.test/api?api_key=not-for-disk&ok=1"},
+        )
+        self.assertIn("https://example.test/api", sig)
+        self.assertNotIn("not-for-disk", sig)
+        self.assertNotIn("?ok=1", sig)
+
+    def test_expired_unresolved_lessons_are_not_shown_or_resolved(self):
+        import time
+        store = self.lessons.LessonsStore()
+        identity = "cli:expired"
+        old = time.time() - self.lessons.LESSON_TTL - 1
+        store.record_failure(identity, "read_file", {"path": "old.txt"}, "ERROR: old", ts=old)
+        self.assertEqual(store.unresolved(identity), [])
+        self.assertEqual(store.counts(identity), {})
+        self.assertFalse(store.record_fix_auto(identity, "read_file", {"path": "old.txt"}))
+
 
 class CorrectionsLedgerTests(unittest.TestCase):
     """The memory prompt_block now separates user facts from reflection facts."""

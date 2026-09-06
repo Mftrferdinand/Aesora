@@ -2211,6 +2211,29 @@ TOOL_DEFS: list[ToolDef] = [
         frozenset({"full"}),
     ),
     ToolDef(
+        "resolve_lesson",
+        (
+            "Mark a recorded tool failure as resolved with the concrete fix that "
+            "worked. Use during self-reflection only after verifying a different "
+            "approach succeeded. Pass the exact tool name and a distinctive literal "
+            "substring from the failed args_sig shown in the reflection context; "
+            "never store secrets in the fix."
+        ),
+        {
+            "type": "object",
+            "properties": {
+                "tool": {"type": "string", "description": "The failed tool name."},
+                "args_sig_contains": {
+                    "type": "string",
+                    "description": "Literal distinctive substring from the failed args signature, for example 'path=src/missing.py'.",
+                },
+                "fix": {"type": "string", "description": "Short reusable correction: what failed and what worked instead."},
+            },
+            "required": ["tool", "args_sig_contains", "fix"],
+        },
+        frozenset({"full"}),
+    ),
+    ToolDef(
         "execute_code",
         "Run a Python snippet in the operator workspace and return the real output. Raise 'timeout' for slow work (heavy computation, large downloads) instead of letting it fail at the 60s default.",
         {
@@ -2446,6 +2469,9 @@ class ToolExecutor:
             "manage_skill": lambda action, name="", content="", old_text="", new_text="", file_path="", category="", absorbed_into="": skills.manage_skill(
                 action, name, content, old_text, new_text, file_path, category, absorbed_into
             ),
+            "resolve_lesson": lambda tool, args_sig_contains, fix: self._resolve_lesson(
+                tool, args_sig_contains, fix
+            ),
             "execute_code": lambda code, timeout=None: _execute_code(code, self.workspace, timeout, self.identity),
             "run_shell": lambda command, timeout=None, background=False: _run_shell(command, self.workspace, timeout, background, self.identity),
             "process_control": lambda action, job_id="", lines=None: _process_control(action, job_id, lines),
@@ -2455,6 +2481,17 @@ class ToolExecutor:
             "recall_history": lambda query="": self._recall_history(query),
             "ask_user": lambda question, options=None: interaction.ask(self.identity, question, options),
         }
+
+    def _resolve_lesson(self, tool: str, args_sig_contains: str, fix: str) -> str:
+        """Resolve one unresolved lesson with an explicit verified correction."""
+        from zeline import lessons as lessons_module
+
+        return lessons_module.resolve_lesson(
+            self.identity,
+            str(tool or "").strip(),
+            str(args_sig_contains or "").strip(),
+            str(fix or "").strip(),
+        )
 
     def _browser(
         self,
@@ -2821,14 +2858,20 @@ class ToolExecutor:
         if outcome.blocked:
             return plugin_bus.denial_message(name, outcome)
         result = self._dispatch(name, outcome.args)
+        # Redaction/rewriting hooks must run before audit and lessons capture;
+        # otherwise a plugin can hide a secret from the model while the raw
+        # result is still persisted in the audit/learning stores.
+        result = self.plugins.after(name, outcome.args, result)
         self._audit(name, outcome.args, result)
-        return self.plugins.after(name, outcome.args, result)
+        return result
 
     def _audit(self, name: str, args: dict[str, Any], result: str) -> None:
         """Record a mutating tool call to the append-only event log.
 
         Also auto-captures failures into the lessons store so the agent
         learns from its mistakes without needing the model to elect to save.
+        Auto-resolves prior failures when the same tool succeeds on retry,
+        closing the learning loop.
 
         Best-effort and swallowed: an audit failure must never turn a successful
         tool call into a failed one. Read-only tools are skipped inside
@@ -2841,12 +2884,18 @@ class ToolExecutor:
         # Auto-capture tool failures for the lessons store. Unlike the audit
         # trail (which only logs mutating tools), lessons capture ALL errors —
         # a read_file failure teaches "this path doesn't exist" too.
-        if str(result).startswith("ERROR"):
-            try:
-                from zeline import lessons as lessons_module
-                lessons_module.log_failure(self.identity, name, args if isinstance(args, dict) else {}, result)
-            except Exception:
-                pass
+        # Auto-resolve prior failures when the same tool succeeds on retry,
+        # closing the learning loop: failure → unresolved → success → resolved
+        # → prompt_block injects the correction into the next session.
+        try:
+            from zeline import lessons as lessons_module
+            safe_args = args if isinstance(args, dict) else {}
+            if str(result).startswith("ERROR"):
+                lessons_module.log_failure(self.identity, name, safe_args, result)
+            else:
+                lessons_module.log_success(self.identity, name, safe_args, result)
+        except Exception:
+            pass
 
     def _dispatch(self, name: str, args: dict[str, Any]) -> str:
         # tool_search is a discovery tool, not a capability: it only exists while

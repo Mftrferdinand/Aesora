@@ -1377,6 +1377,40 @@ def cmd_memory() -> int:
     return 0
 
 
+def cmd_lessons() -> int:
+    """Show lessons learned from tool failures — the self-improvement store."""
+    from zeline import lessons as lessons_module
+
+    counts = lessons_module.lessons_summary("cli:local")
+    resolved = lessons_module.resolved_lessons("cli:local", limit=10)
+    unresolved = lessons_module.unresolved_lessons("cli:local", limit=5)
+    total_resolved = counts.get("resolved", 0)
+    total_unresolved = counts.get("unresolved", 0)
+
+    if not total_resolved and not total_unresolved:
+        print("No lessons yet. When a tool fails and the agent retries")
+        print("successfully, the lesson is captured here and injected into")
+        print("the next session's system prompt automatically.")
+        return 0
+
+    print(f"Lessons: {total_resolved} resolved, {total_unresolved} unresolved\n")
+    if resolved:
+        print("Resolved (injected into system prompt):")
+        for r in resolved:
+            tool = r.get("tool", "")
+            err = str(r.get("error", ""))[:80]
+            fix = str(r.get("fix", ""))[:80]
+            print(f"  [DO] {tool}: DON'T \"{err}\" → DO: {fix}")
+        print()
+    if unresolved:
+        print("Unresolved (failure recorded, no fix yet):")
+        for u in unresolved:
+            tool = u.get("tool", "")
+            err = str(u.get("error", ""))[:80]
+            print(f"  [--] {tool}: {err}")
+    return 0
+
+
 def cmd_init(directory: str | None = None, *, force: bool = False) -> int:
     """Create a ZELINE.md so project conventions load automatically.
 
@@ -2244,6 +2278,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("skills", aliases=["skill"], help="list skills")
     subparsers.add_parser("memory", help="view local CLI memory")
+    subparsers.add_parser("lessons", help="view lessons learned from tool failures")
+
+
 
     tools_parser = subparsers.add_parser("tools", help="inspect and configure native tools")
     tools_sub = tools_parser.add_subparsers(dest="tools_command")
@@ -2463,6 +2500,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_skills()
     if command == "memory":
         return cmd_memory()
+    if command == "lessons":
+        return cmd_lessons()
     if command == "cron":
         return cmd_cron(
             getattr(namespace, "cron_action", None) or "list",
