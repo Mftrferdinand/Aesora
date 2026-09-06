@@ -244,10 +244,10 @@ def _yes_no(prompt: str, default: bool = False) -> bool:
 
 
 GATEWAY_OPTIONS = (
-    ("telegram", "Telegram"),
-    ("whatsapp", "WhatsApp"),
-    ("webhook", "Webhook"),
-    ("cancel", "Cancel"),
+    ("telegram", "Telegram", "\U0001f4ac"),   # 💬
+    ("whatsapp", "WhatsApp", "\U0001f7e2"),    # 🟢
+    ("webhook", "Webhook", "\U0001f517"),      # 🔗
+    ("cancel", "Cancel", "\u274c"),            # ❌
 )
 
 
@@ -255,12 +255,17 @@ def _read_menu_key() -> str:
     return read_menu_key()
 
 
+def _gateway_label(label: str, icon: str) -> str:
+    """'<emoji> Telegram' on a capable terminal, plain 'Telegram' on legacy."""
+    return f"{branding.emoji(icon)}{label}"
+
+
 def _select_gateway() -> str:
     """Arrow-key gateway picker with numeric fallback for redirected stdin."""
     if not sys.stdin.isatty():
         print("Select gateway:")
-        for index, (_value, label) in enumerate(GATEWAY_OPTIONS, 1):
-            print(f"  {index}. {label}")
+        for index, (_value, label, icon) in enumerate(GATEWAY_OPTIONS, 1):
+            print(f"  {index}. {_gateway_label(label, icon)}")
         while True:
             answer = input(f"Choice [1-{len(GATEWAY_OPTIONS)}]: ").strip()
             if answer.isdigit() and 1 <= int(answer) <= len(GATEWAY_OPTIONS):
@@ -268,13 +273,14 @@ def _select_gateway() -> str:
             print("  Invalid choice.")
 
     selected = 0
-    print("Select gateway (↑/↓ then Enter):")
+    chevron = branding.prompt_glyph()
+    print("Select gateway (\u2191/\u2193 then Enter):")
     with raw_mode():
         try:
             while True:
-                for index, (_value, label) in enumerate(GATEWAY_OPTIONS):
-                    marker = _paint("❯", COLOR_BLUE) if index == selected else " "
-                    print(f"\r\033[K  {marker} {label}")
+                for index, (_value, label, icon) in enumerate(GATEWAY_OPTIONS):
+                    marker = _paint(chevron, COLOR_BLUE) if index == selected else " "
+                    print(f"\r\033[K  {marker} {_gateway_label(label, icon)}")
                 key = _read_menu_key()
                 if key == "up":
                     selected = (selected - 1) % len(GATEWAY_OPTIONS)
@@ -543,17 +549,20 @@ def cmd_setup_center() -> int:
     """Reconfigurable setup center; first-run onboarding remains `cmd_setup`."""
     _print_banner()
     print(f"==> SETUP CENTER  ·  {config.CONFIG_FILE}")
+    # Emoji prefixes render on capable terminals and vanish (no mojibake) on a
+    # legacy console via branding.emoji().
+    sections = [
+        ("\U0001f6f0\ufe0f", "Gateway"),   # 🛰️
+        ("\U0001f9e0", "Model"),           # 🧠
+        ("\U0001f6e0\ufe0f", "Tools"),      # 🛠️
+        ("\U0001f50c", "Integrations"),    # 🔌
+        ("\U0001f9ec", "Agent"),           # 🧬
+        ("\u2705", "Done"),                # ✅
+    ]
     while True:
         choice = _arrow_menu(
             "Configure:",
-            [
-                "Gateway",
-                "Model",
-                "Tools",
-                "Integrations",
-                "Agent",
-                "Done",
-            ],
+            [f"{branding.emoji(icon)}{label}" for icon, label in sections],
         )
         if choice in {-1, 5}:
             print("Setup center done. Run `zeline doctor` to verify everything.")
@@ -764,12 +773,13 @@ def _arrow_menu(title: str, options: list[str], *, start: int = 0) -> int:
             print("  Invalid choice.")
 
     selected = max(0, min(start, len(options) - 1))
-    print(title + "  (↑/↓ then Enter, Esc = cancel)")
+    chevron = branding.prompt_glyph()
+    print(title + "  (\u2191/\u2193 then Enter, Esc = cancel)")
     with raw_mode():
         try:
             while True:
                 for index, label in enumerate(options):
-                    marker = _paint("❯", COLOR_BLUE) if index == selected else " "
+                    marker = _paint(chevron, COLOR_BLUE) if index == selected else " "
                     print(f"\r\033[K  {marker} {label}")
                 key = _read_menu_key()
                 if key == "up":
@@ -904,7 +914,7 @@ def cmd_chat(query: str | None = None) -> int:
     sep = "\u2022" if unicode_ok else "-"
     hint = f"Type your message.  {sep}  undo  {sep}  exit"
     print(f"{_paint(hint, COLOR_BLUE) if color else hint}\n")
-    you_prompt = f"you {chevron}"
+    you_prompt = f"You {chevron}"
     you_rendered = f"{_paint(you_prompt, COLOR_LIGHT_BLUE) if color else you_prompt} "
     while True:
         try:

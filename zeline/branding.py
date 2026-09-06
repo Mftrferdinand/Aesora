@@ -37,13 +37,12 @@ COMPACT_WIDTH = 27
 
 CREDIT = "AGENTIC AI BY ZEROLINEAR"
 
-# Vertical gradient for the full wordmark: whitish-blue → light blue → blue →
-# dark blue, one 256-colour SGR per row. Chosen so luminance falls MONOTONICALLY
-# (no bright row after a dark one) and every step is blue-leaning (blue > green),
-# so it never drifts into cyan/teal. This is the "dr biru muda keputihan → biru
-# tua" ramp; the old 51/45/39/38/32/27 mixed cyan+teal and looked like it bounced
-# light→dark→light.
-_GRADIENT = ("38;5;189", "38;5;153", "38;5;111", "38;5;75", "38;5;33", "38;5;26")
+# Vertical gradient for the full wordmark, top → bottom:
+#   Putih (white) → Biru muda → Biru → Biru sedikit tua → Biru tua
+# One 256-colour SGR per row. Luminance falls MONOTONICALLY (no bright row after
+# a dark one, so it never "bounces" light→dark→light) and rows 2-6 are all
+# blue-leaning (blue channel > green), so the fade never drifts into cyan/teal.
+_GRADIENT = ("38;5;231", "38;5;153", "38;5;75", "38;5;39", "38;5;33", "38;5;26")
 _COMPACT_COLOR = "38;5;111"
 _SUBTITLE_COLOR = "38;5;244"
 _RESET = "\033[0m"
@@ -60,6 +59,25 @@ def prompt_glyph(unicode_ok: bool | None = None) -> str:
     if unicode_ok is None:
         unicode_ok = supports_unicode()
     return "\u276f" if unicode_ok else ">"
+
+
+def emoji(symbol: str, *, unicode_ok: bool | None = None) -> str:
+    """Return the emoji plus a trailing space, or '' on a legacy console.
+
+    Menu labels read '<emoji> Gateway' on a capable terminal and just 'Gateway'
+    on a stream that cannot encode the glyph — never a mojibake box. Uses the
+    astral-plane encode test rather than the BMP block test, because a console
+    can support box-drawing yet still not encode a 4-byte emoji.
+    """
+    if unicode_ok is None:
+        stream = sys.stdout
+        encoding = getattr(stream, "encoding", None) or "utf-8"
+        try:
+            symbol.encode(encoding)
+            unicode_ok = True
+        except (LookupError, UnicodeEncodeError):
+            unicode_ok = False
+    return f"{symbol} " if unicode_ok else ""
 
 
 def rule(width: int | None = None, *, unicode_ok: bool | None = None) -> str:

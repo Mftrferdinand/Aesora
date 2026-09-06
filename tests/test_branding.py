@@ -90,7 +90,11 @@ class BrandingTests(unittest.TestCase):
 
         lums = [lum(c) for c in codes]
         self.assertEqual(lums, sorted(lums, reverse=True), "gradient must darken monotonically")
-        for c in codes:
+        # Row 1 is white (the "Putih" top); every row below it must be
+        # blue-leaning (blue > green) so the fade never drifts into cyan/teal.
+        head_r, head_g, head_b = rgb(codes[0])
+        self.assertGreaterEqual(min(head_r, head_g, head_b), 200, "top row should be white")
+        for c in codes[1:]:
             r, g, b = rgb(c)
             self.assertGreater(b, g, f"colour {c} is not blue-leaning (b={b} g={g})")
 
@@ -100,6 +104,13 @@ class BrandingTests(unittest.TestCase):
         self.assertIn("\u2500", branding.rule(width=20, unicode_ok=True))
         self.assertNotIn("\u2500", branding.rule(width=20, unicode_ok=False))
         self.assertIn("-", branding.rule(width=20, unicode_ok=False))
+
+    def test_emoji_prefix_present_when_capable_and_stripped_on_legacy(self):
+        # Capable terminal → '🛰️ ' prefix with a trailing space before the label.
+        self.assertEqual(branding.emoji("\U0001f6f0\ufe0f", unicode_ok=True), "\U0001f6f0\ufe0f ")
+        # Legacy console cannot encode the astral emoji → empty prefix, never a
+        # mojibake box. The label alone still reads cleanly.
+        self.assertEqual(branding.emoji("\U0001f6f0\ufe0f", unicode_ok=False), "")
 
     def test_color_forced_on_with_force_color(self):
         with mock.patch.dict(os.environ, {"FORCE_COLOR": "1"}, clear=False):
