@@ -7,7 +7,7 @@
    ███╔╝  ██╔══╝  ██║     ██║██║╚██╗██║██╔══╝
   ███████╗███████╗███████╗██║██║ ╚████║███████╗
   ╚══════╝╚══════╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
-  AGENTIC AI BY ZEROLINEAR • v0.3.0
+  AGENTIC AI BY ZEROLINEAR • v0.3.1
 ```
 
 On Termux, Linux, macOS, and iSH, Zeline installs into a **private Python
@@ -31,7 +31,7 @@ WhatsApp also needs Node.js 18+ and npm.
 One line on every POSIX platform — Termux, Linux, macOS, and iSH:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 ```
 
 Then `zeline setup`.
@@ -60,19 +60,22 @@ real Python gets a clear error instead of a Store popup. See
 For independent build-provenance verification (signed by GitHub, not served
 alongside the file), see [the attestation step below](#why-there-is-no-checksum-step-to-copy).
 
-### Why not `pip install zeline` yet
+### PyPI (`pip` / `uv`)
 
-The release workflow publishes to PyPI through Trusted Publishing (OIDC), with no
-API token stored in the repository, and it uploads the same artifacts that
-already passed checksum and metadata verification rather than rebuilding them.
-The name is not claimed on PyPI yet, so `pip install zeline` and
-`uv tool install zeline` would fetch nothing — this page will document them as
-soon as the first upload lands, and the installer below stays the supported route
-either way.
+Zeline is on PyPI via Trusted Publishing (OIDC) — no API token is stored in
+the repository, and the same artifacts that passed checksum and metadata
+verification are uploaded rather than rebuilt.
 
-The installer is the recommended route for a fresh machine regardless: it
-provisions Python, creates the private environment, and verifies the release
-wheel against `SHA256SUMS` without assuming you already have `uv` or `pip`.
+```sh
+pip install zeline
+# or, in an isolated tool environment:
+uv tool install zeline
+```
+
+Then `zeline setup`. On a fresh machine the installer route below is still
+recommended — it provisions Python, creates the private environment, and
+verifies the release wheel against `SHA256SUMS` without assuming you already
+have `uv` or `pip`.
 
 ### Why there is no checksum step to copy
 
@@ -102,7 +105,7 @@ Install Termux from F-Droid or GitHub (the Play Store build is obsolete), then:
 ```bash
 pkg update -y
 pkg install python curl -y
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -120,7 +123,7 @@ Debian / Ubuntu:
 ```bash
 sudo apt update
 sudo apt install python3 python3-venv curl -y
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -128,7 +131,7 @@ Fedora:
 
 ```bash
 sudo dnf install python3 curl -y
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -136,7 +139,7 @@ Arch Linux:
 
 ```bash
 sudo pacman -S --needed python curl
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -149,7 +152,7 @@ Install Apple command-line tools and Homebrew Python if needed:
 ```bash
 xcode-select --install
 brew install python
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -165,7 +168,7 @@ Use [iSH](https://ish.app/), an Alpine Linux shell for iOS/iPadOS:
 ```sh
 apk update
 apk add bash curl python3 py3-pip
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -180,7 +183,7 @@ Open **PowerShell** or **Windows Terminal**, not Command Prompt. Administrator
 rights are not required:
 
 ```powershell
-iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.ps1 -OutFile install.ps1; .\install.ps1
+iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 Then `zeline setup`. `install.ps1` verifies the versioned wheel with

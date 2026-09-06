@@ -54,13 +54,24 @@ Run it locally for development or deploy it to your own server or cloud, and con
 platforms use a private Python environment; Windows uses a per-user package
 install. Neither requires root/Administrator access.
 
+### PyPI (recommended)
+
+```sh
+pip install zeline
+# or, in an isolated tool environment:
+uv tool install zeline
+```
+
+Then `zeline setup`. Zeline is on PyPI via Trusted Publishing (OIDC) — no API
+token stored in the repository, same verified artifacts as the release.
+
 ### Termux, Linux, macOS, and iSH
 
 One line, and it needs no existing Python tooling — it provisions a private
 environment for you:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 ```
 
 Then `zeline setup`. The installer downloads the versioned wheel and verifies it
@@ -70,7 +81,7 @@ hand. On iSH, run `apk add bash curl python3` first.
 ### Windows PowerShell
 
 ```powershell
-iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.ps1 -OutFile install.ps1; .\install.ps1
+iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 Then `zeline setup`.

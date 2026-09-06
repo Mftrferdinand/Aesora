@@ -52,12 +52,23 @@ Zeline 并不绑定于单一的模型、提供商或基础设施，而是围绕�
 平台上，Zeline 使用私有 Python 环境；Windows 只为当前用户安装。无需 root
 或管理员权限。
 
+### PyPI（推荐）
+
+```sh
+pip install zeline
+# 或在隔离的工具环境中：
+uv tool install zeline
+```
+
+然后运行 `zeline setup`。Zeline 通过 Trusted Publishing（OIDC）发布到 PyPI
+——仓库中不存储 API token，上传的是与发布相同的已校验构件。
+
 ### Termux、Linux、macOS 和 iSH
 
 只需一行，而且不需要任何现成的 Python 工具链——它会为你准备一个私有环境：
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 ```
 
 然后运行 `zeline setup`。安装脚本会自行下载带版本号的 wheel，并在安装前对照
@@ -69,7 +80,7 @@ curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/r
 ### Windows PowerShell
 
 ```powershell
-iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.ps1 -OutFile install.ps1; .\install.ps1
+iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 然后运行 `zeline setup`。

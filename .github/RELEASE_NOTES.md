@@ -4,14 +4,26 @@ Zeline is the open-source agentic AI framework by Zerolinear.
 
 ### Installing
 
+PyPI (recommended):
+
+```sh
+pip install zeline
+# or, in an isolated tool environment:
+uv tool install zeline
+```
+
+Then `zeline setup`.
+
 One line on every POSIX platform — Termux, Linux, macOS, iSH:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 ```
 
 The installer downloads the versioned wheel and verifies it against
-`SHA256SUMS` itself, so there is nothing to check by hand.
+`SHA256SUMS` itself, so there is nothing to check by hand. Node.js users can
+also run `npm install -g zeline`; the npm wrapper verifies the same wheel and
+installs it into the same private runtime.
 
 Every release carries the whole bundled surface — this one ships **255 skills**
 (109 of them the Zenith corpus) and **29 tools** — and the release workflow now
@@ -65,9 +77,9 @@ install that is missing any of it.
   verified, attested, and published. The upload is now gated on a probe that asks
   PyPI whether it accepts this workflow's identity, so the job is *skipped* with
   setup instructions when no publisher exists and runs normally once one does. A
-  skipped job says "not configured"; a failed job says "broken". `pip`/`uv`
-  installs become available with the first release whose upload completes; until
-  then use the installer above.
+  skipped job says "not configured"; a failed job says "broken". With the
+  publisher now registered, `pip install zeline` and `uv tool install zeline`
+  are supported from this release onward.
 - **`zeline update` restarts the gateways that were actually running.** It read
   the selection after the stop had already deleted the state file, so an operator
   who started only Telegram got every enabled gateway back.
@@ -108,7 +120,7 @@ default for installs that never set it.
 
 ### Installation
 
-See the [installation guide](https://github.com/Mftrferdinand/Zeline/blob/v0.3.0/docs/installation.md) for install commands on every supported platform, and the [changelog](https://github.com/Mftrferdinand/Zeline/blob/v0.3.0/CHANGELOG.md) for the full list of changes with links to every pull request.
+See the [installation guide](https://github.com/Mftrferdinand/Zeline/blob/v0.3.1/docs/installation.md) for install commands on every supported platform, and the [changelog](https://github.com/Mftrferdinand/Zeline/blob/v0.3.1/CHANGELOG.md) for the full list of changes with links to every pull request.
 
 ### Assets
 
