@@ -44,36 +44,40 @@ function Write-Fail   { param([string]$Text) Write-Host "[x] $Text" -ForegroundC
 function Write-Warn   { param([string]$Text) Write-Host "[!] $Text" -ForegroundColor Yellow }
 
 function Show-Banner {
-    $title    = 'Z  E  L  I  N  E'
-    # Keep the .ps1 source ASCII-safe: Windows PowerShell 5.1 treats UTF-8
-    # without BOM as the legacy ANSI code page. Build box glyphs at runtime.
+    # Shared Zeline wordmark (ansi_shadow block art), identical to the CLI and
+    # install.sh. Windows PowerShell 5.1 decodes a UTF-8-without-BOM script as
+    # the legacy ANSI code page, so the SOURCE stays ASCII: each row is stored
+    # with ASCII placeholders and the real block/box glyphs are substituted at
+    # runtime from [char] code points. All glyphs live in cp437/cp850, so they
+    # render even on a console that ignores the UTF-8 switch below.
+    $rows = @(
+        'BBBBBBB7BBBBBBB7BB7     BB7BBB7   BB7BBBBBBB7',
+        'L==BBB4JBB4====JBBI     BBIBBBB7  BBIBB4====J',
+        '  BBB4J BBBBB7  BBI     BBIBB4BB7 BBIBBBBB7  ',
+        ' BBB4J  BB4==J  BBI     BBIBBILBB7BBIBB4==J  ',
+        'BBBBBBB7BBBBBBB7BBBBBBB7BBIBBI LBBBBIBBBBBBB7',
+        'L======JL======JL======JL=JL=J  L===JL======J'
+    )
+    $full = [char]0x2588  # B  full block
+    $ddl  = [char]0x2557  # 7  double down-and-left
+    $ddr  = [char]0x2554  # 4  double down-and-right
+    $dv   = [char]0x2551  # I  double vertical
+    $dh   = [char]0x2550  # =  double horizontal
+    $dur  = [char]0x255A  # L  double up-and-right
+    $dul  = [char]0x255D  # J  double up-and-left
     $bullet   = [char]0x2022
     $subtitle = "AGENTIC AI BY ZEROLINEAR $bullet v$Version"
-    $inner    = 39
-    $tl = [char]0x256D; $tr = [char]0x256E
-    $ml = [char]0x251C; $mr = [char]0x2524
-    $bl = [char]0x2570; $br = [char]0x256F
-    $v  = [char]0x2502; $h  = [char]0x2500
+    $colors = @('Cyan', 'Cyan', 'Blue', 'Blue', 'DarkBlue', 'DarkBlue')
 
-    function Format-Centered {
-        param([string]$Text, [int]$Width)
-        $pad  = [math]::Floor(($Width - $Text.Length) / 2)
-        $left = ' ' * $pad
-        $right = ' ' * ($Width - $Text.Length - $pad)
-        return "$left$Text$right"
-    }
-
-    $t = Format-Centered -Text $title    -Width $inner
-    $s = Format-Centered -Text $subtitle -Width $inner
     # Windows PowerShell 5.1 inherits a legacy code page. Switch output to UTF-8
-    # so the same boxed ZELINE identity used on Termux/macOS/Linux survives.
+    # so the same wordmark used on Termux/macOS/Linux survives.
     try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch {}
     Write-Host ''
-    Write-Host ([string]$tl + ([string]$h * $inner) + [string]$tr) -ForegroundColor DarkBlue
-    Write-Host ([string]$v  + $t + [string]$v)                       -ForegroundColor White
-    Write-Host ([string]$ml + ([string]$h * $inner) + [string]$mr) -ForegroundColor DarkBlue
-    Write-Host ([string]$v  + $s + [string]$v)                       -ForegroundColor Blue
-    Write-Host ([string]$bl + ([string]$h * $inner) + [string]$br) -ForegroundColor DarkBlue
+    for ($i = 0; $i -lt $rows.Count; $i++) {
+        $line = $rows[$i].Replace('B', $full).Replace('7', $ddl).Replace('4', $ddr).Replace('I', $dv).Replace('=', $dh).Replace('L', $dur).Replace('J', $dul)
+        Write-Host ('  ' + $line) -ForegroundColor $colors[$i]
+    }
+    Write-Host ('  ' + $subtitle) -ForegroundColor DarkGray
     Write-Host ''
     Write-Detail 'Platform : Windows PowerShell'
 }

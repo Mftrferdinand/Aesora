@@ -96,19 +96,25 @@ reject_line_breaks "--bin-dir" "$BIN_DIR"
 reject_line_breaks "ZELINE_PYTHON" "$PYTHON_BIN"
 
 print_banner() {
-  # Fixed-width identity: do not use ${#subtitle}. In a C/POSIX locale Bash may
-  # count UTF-8 bytes (the bullet is 3 bytes), bending the frame on glibc.
-  local top='╭───────────────────────────────────────╮'
-  local title='│           Z  E  L  I  N  E            │'
-  local mid='├───────────────────────────────────────┤'
-  local subtitle="│   AGENTIC AI BY ZEROLINEAR • v${VERSION}   │"
-  local bottom='╰───────────────────────────────────────╯'
+  # Shared Zeline wordmark (ansi_shadow block art), identical to the CLI banner.
+  # install.sh is UTF-8, so the block/box glyphs are embedded directly. The
+  # subtitle is printed as a normal line beneath the art, not framed.
+  local l1='███████╗███████╗██╗     ██╗███╗   ██╗███████╗'
+  local l2='╚══███╔╝██╔════╝██║     ██║████╗  ██║██╔════╝'
+  local l3='  ███╔╝ █████╗  ██║     ██║██╔██╗ ██║█████╗  '
+  local l4=' ███╔╝  ██╔══╝  ██║     ██║██║╚██╗██║██╔══╝  '
+  local l5='███████╗███████╗███████╗██║██║ ╚████║███████╗'
+  local l6='╚══════╝╚══════╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝'
+  local subtitle="AGENTIC AI BY ZEROLINEAR • v${VERSION}"
   if [ -t 1 ] && [ "${NO_COLOR+x}" != x ] && [ "${TERM:-}" != "dumb" ]; then
-    local frame='\033[38;5;25m' white='\033[97m\033[1m' blue='\033[38;5;39m' reset='\033[0m'
-    printf "\n${frame}%s${reset}\n${frame}│${reset}${white}%s${reset}${frame}│${reset}\n${frame}%s${reset}\n${frame}│${reset}${blue}%s${reset}${frame}│${reset}\n${frame}%s${reset}\n" \
-      "$top" "           Z  E  L  I  N  E            " "$mid" "   AGENTIC AI BY ZEROLINEAR • v${VERSION}   " "$bottom"
+    local c1='\033[38;5;51m' c2='\033[38;5;45m' c3='\033[38;5;39m'
+    local c4='\033[38;5;38m' c5='\033[38;5;32m' c6='\033[38;5;27m'
+    local sub='\033[38;5;244m' reset='\033[0m'
+    printf "\n  ${c1}%s${reset}\n  ${c2}%s${reset}\n  ${c3}%s${reset}\n  ${c4}%s${reset}\n  ${c5}%s${reset}\n  ${c6}%s${reset}\n  ${sub}%s${reset}\n\n" \
+      "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" "$subtitle"
   else
-    printf '\n%s\n%s\n%s\n%s\n%s\n' "$top" "$title" "$mid" "$subtitle" "$bottom"
+    printf '\n  %s\n  %s\n  %s\n  %s\n  %s\n  %s\n  %s\n\n' \
+      "$l1" "$l2" "$l3" "$l4" "$l5" "$l6" "$subtitle"
   fi
 }
 

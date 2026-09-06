@@ -542,11 +542,9 @@ class ZelineCliTests(unittest.TestCase):
             with contextlib.redirect_stdout(output):
                 self.cli._print_banner()
         text = output.getvalue()
-        # Boxed identity: title + subtitle inside one frame, no ANSI in plain mode.
-        self.assertIn("Z  E  L  I  N  E", text)
+        # Block-art wordmark + product subtitle, no ANSI in plain mode.
+        self.assertIn("█", text)
         self.assertIn(f"AGENTIC AI BY ZEROLINEAR • v{PACKAGE_VERSION}", text)
-        self.assertIn("╭", text)
-        self.assertIn("╰", text)
         self.assertNotIn("\x1b[", text)
 
 
@@ -565,7 +563,9 @@ class ZelineCliTests(unittest.TestCase):
         parser = self.cli.build_parser()
         self.assertEqual(parser.prog, "zeline")
         result = self.invoke(["status"], expected_status=1)
-        self.assertIn("Z  E  L  I  N  E", result)
+        # The block-art wordmark renders (full-block glyph present), and the
+        # product credit line names Zerolinear.
+        self.assertIn("█", result)
         self.assertIn(f"AGENTIC AI BY ZEROLINEAR • v{PACKAGE_VERSION}", result)
         self.assertIn("ZEROLINEAR", result)
 
@@ -575,7 +575,7 @@ class ZelineCliTests(unittest.TestCase):
             output = io.StringIO()
             with contextlib.redirect_stdout(output):
                 self.cli._print_banner()
-        self.assertIn("Z  E  L  I  N  E", output.getvalue())
+        self.assertIn("█", output.getvalue())
         self.assertIn("AGENTIC AI BY ZEROLINEAR", output.getvalue())
         self.assertNotIn("\x1b[", output.getvalue())
 

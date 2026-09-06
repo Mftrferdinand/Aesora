@@ -129,10 +129,9 @@ class PosixInstallerTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("Z  E  L  I  N  E", result.stdout)
+        # Block-art wordmark (full-block glyph) + the product subtitle line.
+        self.assertIn("█", result.stdout)
         self.assertIn(f"AGENTIC AI BY ZEROLINEAR • {RELEASE_TAG}", result.stdout)
-        self.assertIn("╭", result.stdout)
-        self.assertIn("╰", result.stdout)
 
     def test_installer_supports_platform_probe_without_installing(self):
         for platform in ("termux", "linux", "macos", "ios-ish"):
@@ -147,7 +146,7 @@ class PosixInstallerTests(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn(platform, result.stdout.lower())
-                self.assertIn("Z  E  L  I  N  E", result.stdout)
+                self.assertIn("█", result.stdout)
 
     def test_installer_can_install_into_an_isolated_prefix(self):
         """Exercise the real POSIX installer without touching the developer home."""
@@ -254,12 +253,13 @@ class PosixInstallerTests(unittest.TestCase):
 class PowerShellInstallerBrandTests(unittest.TestCase):
     def test_windows_installer_matches_the_zeline_boxed_identity(self):
         text = (ROOT / "install.ps1").read_text(encoding="utf-8")
-        self.assertIn("Z  E  L  I  N  E", text)
         self.assertIn("AGENTIC AI BY ZEROLINEAR", text)
-        # Windows PowerShell 5.1 decodes UTF-8-without-BOM as ANSI. Construct
-        # Unicode at runtime rather than storing raw box glyphs in the script.
-        self.assertIn("0x256D", text)
-        self.assertIn("0x2570", text)
+        # Source stays ASCII (PS 5.1 reads a UTF-8-without-BOM script as ANSI).
+        # The wordmark's block/box glyphs are built at runtime from [char]codes,
+        # so their code points must appear in the script, not raw glyphs.
+        self.assertIn("0x2588", text)  # full block — the wordmark body
+        self.assertIn("0x255A", text)  # double up-and-right — box glyph
+        self.assertNotIn("█", text)    # never a raw non-ASCII glyph in source
         self.assertIn("[switch]$PlatformInfo", text)
         self.assertIn("Windows PowerShell", text)
 

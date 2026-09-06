@@ -35,6 +35,7 @@ import requests
 import yaml
 
 from zeline import __version__, config, skills
+from zeline import branding
 from zeline._termkey import raw_mode, read_key, read_menu_key, read_secret
 from zeline.agent import ZelineError
 from zeline.gateways import GATEWAYS, gateway_status, run_all
@@ -47,25 +48,21 @@ from zeline.sessions import SessionStore
 
 def _terminal_color_enabled() -> bool:
     """Use ANSI color only when the terminal explicitly supports it."""
-    if os.environ.get("NO_COLOR") is not None or os.environ.get("TERM") == "dumb":
-        return False
-    return bool(os.environ.get("FORCE_COLOR")) or sys.stdout.isatty()
+    return branding.color_enabled()
 
 
+# Kept as module attributes because tests and the Windows cp1252 encoding guard
+# reference them by name. The living identity is in zeline.branding; these are
+# the plain-text spellings used for assertions and legacy-console safety checks.
 BANNER_TITLE = "Z  E  L  I  N  E"
-BANNER_SUBTITLE = f"AGENTIC AI BY ZEROLINEAR • v{__version__}"
-# Inner box width: widest content line + 3 spaces of padding each side.
-_BANNER_INNER = max(len(BANNER_TITLE), len(BANNER_SUBTITLE)) + 6
-
-
-def _boxed_line(text: str) -> str:
-    return text.center(_BANNER_INNER)
+BANNER_SUBTITLE = branding.subtitle(__version__)
 
 
 # Shared palette (256-color). Gated by _terminal_color_enabled() via _paint().
 COLOR_BLUE = "\033[38;5;39m"        # regular blue — labels before ':'
 COLOR_LIGHT_BLUE = "\033[38;5;117m"  # light blue — the 'you' prompt
 COLOR_DARK_BLUE = "\033[38;5;27m"    # dark blue — the 'Zeline' reply prefix
+COLOR_RED = "\033[38;5;203m"        # soft red — error lines
 COLOR_RESET = "\033[0m"
 
 
@@ -82,32 +79,48 @@ def _label(text: str) -> str:
 
 
 def _print_banner() -> None:
-    """Render the boxed Zeline terminal identity (title + subtitle in one frame)."""
-    top = "╭" + "─" * _BANNER_INNER + "╮"
-    mid = "├" + "─" * _BANNER_INNER + "┤"
-    bottom = "╰" + "─" * _BANNER_INNER + "╯"
-    title = _boxed_line(BANNER_TITLE)
-    subtitle = _boxed_line(BANNER_SUBTITLE)
-    if _terminal_color_enabled():
-        frame = "\033[38;5;25m"   # dark blue frame
-        white = "\033[97m\033[1m"  # bright white bold title
-        blue = "\033[38;5;39m"    # regular blue subtitle
-        reset = "\033[0m"
-        print(
-            f"\n{frame}{top}{reset}\n"
-            f"{frame}│{reset}{white}{title}{reset}{frame}│{reset}\n"
-            f"{frame}{mid}{reset}\n"
-            f"{frame}│{reset}{blue}{subtitle}{reset}{frame}│{reset}\n"
-            f"{frame}{bottom}{reset}\n"
-        )
-    else:
-        print(
-            f"\n{top}\n"
-            f"│{title}│\n"
-            f"{mid}\n"
-            f"│{subtitle}│\n"
-            f"{bottom}\n"
-        )
+    """Render the shared Zeline wordmark (full block art, or compact ASCII).
+
+    Delegates to zeline.branding so the CLI, installer, and every screen show
+    one identity. Auto-detects colour, unicode capability, and terminal width.
+    """
+    print(branding.banner(__version__))
+
+
+def _provider_display() -> str:
+    """Human provider name for the chat header; never the base URL or key."""
+    provider = config.stored_config_copy().get("provider", {})
+    name = str(provider.get("name", "")).strip()
+    if name:
+        return name
+    from urllib.parse import urlparse
+
+    return urlparse(config.BASE_URL).hostname or "unknown"
+
+
+def _print_session_header() -> None:
+    """Aligned key:value session card under the banner (agent/model/provider).
+
+    Labels are padded to one width so the values line up in a column, matching
+    the tidy look of the /status and /model cards on the gateways. A thin rule
+    (box-drawing on capable terminals, ASCII on legacy) separates the wordmark
+    from the card so the two read as distinct blocks on Termux and Windows alike.
+    """
+    unicode_ok = branding.supports_unicode()
+    color = _terminal_color_enabled()
+    rows = [
+        ("Agent", config.NAME),
+        ("Model", config.MODEL),
+        ("Provider", _provider_display()),
+        ("Tools", "full (local operator)"),
+    ]
+    pad = max(len(label) for label, _ in rows)
+    rule = branding.rule(unicode_ok=unicode_ok)
+    print(_paint(rule, COLOR_DARK_BLUE) if color else rule)
+    for label, value in rows:
+        print(f"  {_label(f'{label:<{pad}} :')} {value}")
+    print(_paint(rule, COLOR_DARK_BLUE) if color else rule)
+    print()
 
 
 def _read_secret_key() -> str:
@@ -231,10 +244,10 @@ def _yes_no(prompt: str, default: bool = False) -> bool:
 
 
 GATEWAY_OPTIONS = (
-    ("telegram", "Telegram"),
-    ("whatsapp", "WhatsApp"),
-    ("webhook", "Webhook"),
-    ("cancel", "Cancel"),
+    ("telegram", "Telegram", "\U0001f4ac"),   # 💬
+    ("whatsapp", "WhatsApp", "\U0001f7e2"),    # 🟢
+    ("webhook", "Webhook", "\U0001f517"),      # 🔗
+    ("cancel", "Cancel", "\u274c"),            # ❌
 )
 
 
@@ -242,12 +255,17 @@ def _read_menu_key() -> str:
     return read_menu_key()
 
 
+def _gateway_label(label: str, icon: str) -> str:
+    """'<emoji> Telegram' on a capable terminal, plain 'Telegram' on legacy."""
+    return f"{branding.emoji(icon)}{label}"
+
+
 def _select_gateway() -> str:
     """Arrow-key gateway picker with numeric fallback for redirected stdin."""
     if not sys.stdin.isatty():
         print("Select gateway:")
-        for index, (_value, label) in enumerate(GATEWAY_OPTIONS, 1):
-            print(f"  {index}. {label}")
+        for index, (_value, label, icon) in enumerate(GATEWAY_OPTIONS, 1):
+            print(f"  {index}. {_gateway_label(label, icon)}")
         while True:
             answer = input(f"Choice [1-{len(GATEWAY_OPTIONS)}]: ").strip()
             if answer.isdigit() and 1 <= int(answer) <= len(GATEWAY_OPTIONS):
@@ -255,13 +273,14 @@ def _select_gateway() -> str:
             print("  Invalid choice.")
 
     selected = 0
-    print("Select gateway (↑/↓ then Enter):")
+    chevron = branding.prompt_glyph()
+    print("Select gateway (\u2191/\u2193 then Enter):")
     with raw_mode():
         try:
             while True:
-                for index, (_value, label) in enumerate(GATEWAY_OPTIONS):
-                    marker = _paint("❯", COLOR_BLUE) if index == selected else " "
-                    print(f"\r\033[K  {marker} {label}")
+                for index, (_value, label, icon) in enumerate(GATEWAY_OPTIONS):
+                    marker = _paint(chevron, COLOR_BLUE) if index == selected else " "
+                    print(f"\r\033[K  {marker} {_gateway_label(label, icon)}")
                 key = _read_menu_key()
                 if key == "up":
                     selected = (selected - 1) % len(GATEWAY_OPTIONS)
@@ -530,17 +549,20 @@ def cmd_setup_center() -> int:
     """Reconfigurable setup center; first-run onboarding remains `cmd_setup`."""
     _print_banner()
     print(f"==> SETUP CENTER  ·  {config.CONFIG_FILE}")
+    # Emoji prefixes render on capable terminals and vanish (no mojibake) on a
+    # legacy console via branding.emoji().
+    sections = [
+        ("\U0001f6f0\ufe0f", "Gateway"),   # 🛰️
+        ("\U0001f9e0", "Model"),           # 🧠
+        ("\U0001f6e0\ufe0f", "Tools"),      # 🛠️
+        ("\U0001f50c", "Integrations"),    # 🔌
+        ("\U0001f9ec", "Agent"),           # 🧬
+        ("\u2705", "Done"),                # ✅
+    ]
     while True:
         choice = _arrow_menu(
             "Configure:",
-            [
-                "Gateway - Telegram, WhatsApp, or webhook",
-                "Model - provider, endpoint, API key, and model",
-                "Tools - security profile and workspace",
-                "Integrations - MCP servers and external tools",
-                "Agent - identity, sessions, streaming, tool rounds",
-                "Done",
-            ],
+            [f"{branding.emoji(icon)}{label}" for icon, label in sections],
         )
         if choice in {-1, 5}:
             print("Setup center done. Run `zeline doctor` to verify everything.")
@@ -751,12 +773,13 @@ def _arrow_menu(title: str, options: list[str], *, start: int = 0) -> int:
             print("  Invalid choice.")
 
     selected = max(0, min(start, len(options) - 1))
-    print(title + "  (↑/↓ then Enter, Esc = cancel)")
+    chevron = branding.prompt_glyph()
+    print(title + "  (\u2191/\u2193 then Enter, Esc = cancel)")
     with raw_mode():
         try:
             while True:
                 for index, label in enumerate(options):
-                    marker = _paint("❯", COLOR_BLUE) if index == selected else " "
+                    marker = _paint(chevron, COLOR_BLUE) if index == selected else " "
                     print(f"\r\033[K  {marker} {label}")
                 key = _read_menu_key()
                 if key == "up":
@@ -828,9 +851,7 @@ def cmd_chat(query: str | None = None) -> int:
         print("[!] API key is empty. Run: zeline setup")
         return 2
     _print_banner()
-    print(f"  {_label('Agent :')} {config.NAME}")
-    print(f"  {_label('Model :')} {config.MODEL}")
-    print(f"  {_label('Tool profile:')} full (local operator)\n")
+    _print_session_header()
     sessions = SessionStore(max_sessions=1)
 
     # In the CLI the operator is right here at the keyboard, so ask_user can be
@@ -887,10 +908,17 @@ def cmd_chat(query: str | None = None) -> int:
             print(f"[error] {exc}")
             return 1
 
-    print("Type 'exit' to quit.\n")
+    unicode_ok = branding.supports_unicode()
+    color = _terminal_color_enabled()
+    chevron = branding.prompt_glyph(unicode_ok)
+    sep = "\u2022" if unicode_ok else "-"
+    hint = f"Type your message.  {sep}  undo  {sep}  exit"
+    print(f"{_paint(hint, COLOR_BLUE) if color else hint}\n")
+    you_prompt = f"You {chevron}"
+    you_rendered = f"{_paint(you_prompt, COLOR_LIGHT_BLUE) if color else you_prompt} "
     while True:
         try:
-            text = input(f"{_paint('you ›', COLOR_LIGHT_BLUE) if _terminal_color_enabled() else 'you ›'} ").strip()
+            text = input(you_rendered).strip()
         except (EOFError, KeyboardInterrupt):
             _run_reflection(sessions)
             print("\nGoodbye!")
@@ -914,9 +942,10 @@ def cmd_chat(query: str | None = None) -> int:
             continue
         try:
             answer = ask(text)
-            print(f"{_paint(f'{config.NAME} ›', COLOR_DARK_BLUE)} {answer}\n")
+            reply_prompt = f"{config.NAME} {chevron}"
+            print(f"{_paint(reply_prompt, COLOR_DARK_BLUE) if color else reply_prompt} {answer}\n")
         except ZelineError as exc:
-            print(f"\033[31m[error] {exc}\033[0m\n")
+            print(f"{_paint(f'[error] {exc}', COLOR_RED) if color else f'[error] {exc}'}\n")
 
 
 def cmd_mcp(action: str, name: str | None = None, *, transport: str = "", command: str = "", url: str = "") -> int:
