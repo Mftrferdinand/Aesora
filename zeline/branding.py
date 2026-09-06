@@ -1,0 +1,131 @@
+"""Zeline terminal identity — one wordmark, rendered safely on every terminal.
+
+The interactive CLI, setup wizard, doctor screen, and gateway runner all share
+this module so the product shows ONE identity. Two immutable wordmarks are
+stored, never generated at runtime (no figlet dependency):
+
+- WORDMARK_FULL: ansi_shadow block art. Its glyphs (full block + box drawing)
+  all live in cp437, so they survive a UTF-8-reconfigured Windows console.
+- WORDMARK_COMPACT: 'small' figlet, PURE ASCII. Doubles as the fallback for
+  narrow terminals and for any stream whose encoding cannot represent a block.
+
+Colour is opt-in and generated from the SAME source lines as plain mode, so a
+NO_COLOR / TERM=dumb / non-TTY / CI context degrades to clean monochrome.
+"""
+from __future__ import annotations
+
+import os
+import sys
+
+WORDMARK_FULL = (
+    '███████╗███████╗██╗     ██╗███╗   ██╗███████╗',
+    '╚══███╔╝██╔════╝██║     ██║████╗  ██║██╔════╝',
+    '  ███╔╝ █████╗  ██║     ██║██╔██╗ ██║█████╗  ',
+    ' ███╔╝  ██╔══╝  ██║     ██║██║╚██╗██║██╔══╝  ',
+    '███████╗███████╗███████╗██║██║ ╚████║███████╗',
+    '╚══════╝╚══════╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝',
+)
+FULL_WIDTH = 45
+
+WORDMARK_COMPACT = (
+    ' _______ _    ___ _  _ ___ ',
+    '|_  / __| |  |_ _| \\| | __|',
+    ' / /| _|| |__ | || .` | _| ',
+    '/___|___|____|___|_|\\_|___|',
+)
+COMPACT_WIDTH = 27
+
+CREDIT = "AGENTIC AI BY ZEROLINEAR"
+
+# Cyan -> blue vertical gradient, one 256-colour SGR code per full-wordmark row.
+_GRADIENT = ("38;5;51", "38;5;45", "38;5;39", "38;5;38", "38;5;32", "38;5;27")
+_COMPACT_COLOR = "38;5;39"
+_SUBTITLE_COLOR = "38;5;244"
+_RESET = "\033[0m"
+_PAD = "  "
+
+
+def color_enabled(stream=None) -> bool:
+    """ANSI only when the terminal explicitly supports it.
+
+    NO_COLOR and TERM=dumb force plain output; otherwise colour needs either an
+    explicit FORCE_COLOR or a real TTY. A redirected/CI stream stays monochrome.
+    """
+    if os.environ.get("NO_COLOR") is not None or os.environ.get("TERM") == "dumb":
+        return False
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    stream = stream or sys.stdout
+    try:
+        return bool(stream.isatty())
+    except Exception:
+        return False
+
+
+def supports_unicode(stream=None) -> bool:
+    """True when the stream can encode the block glyph used by the full wordmark.
+
+    A StringIO (encoding=None) is treated as UTF-8 capable, matching how the
+    captured test output and real UTF-8 terminals behave.
+    """
+    stream = stream or sys.stdout
+    encoding = getattr(stream, "encoding", None) or "utf-8"
+    try:
+        "\u2588".encode(encoding)
+        return True
+    except (LookupError, UnicodeEncodeError):
+        return False
+
+
+def terminal_width(default: int = 80) -> int:
+    try:
+        return max(20, os.get_terminal_size().columns)
+    except OSError:
+        return default
+
+
+def subtitle(version: str, *, unicode_ok: bool = True) -> str:
+    bullet = "\u2022" if unicode_ok else "-"
+    return f"{CREDIT} {bullet} v{version}"
+
+
+def wordmark_lines(*, unicode_ok: bool, width: int) -> tuple[tuple[str, ...], bool]:
+    """Pick the wordmark that fits: full block art, else the compact ASCII art."""
+    use_full = unicode_ok and width >= FULL_WIDTH + len(_PAD) * 2
+    return (WORDMARK_FULL if use_full else WORDMARK_COMPACT), use_full
+
+
+def render(version: str, *, color=None, unicode_ok=None, width=None) -> list[str]:
+    """Return the banner as a list of ready-to-print lines (no trailing newline).
+
+    All three inputs are auto-detected when omitted, but overridable so tests are
+    deterministic regardless of the real terminal.
+    """
+    if color is None:
+        color = color_enabled()
+    if unicode_ok is None:
+        unicode_ok = supports_unicode()
+    if width is None:
+        width = terminal_width()
+
+    art, use_full = wordmark_lines(unicode_ok=unicode_ok, width=width)
+    lines: list[str] = [""]
+    for index, row in enumerate(art):
+        if not color:
+            lines.append(_PAD + row)
+        elif use_full:
+            lines.append(f"{_PAD}\033[{_GRADIENT[index]}m{row}{_RESET}")
+        else:
+            lines.append(f"{_PAD}\033[{_COMPACT_COLOR}m{row}{_RESET}")
+
+    sub = subtitle(version, unicode_ok=unicode_ok)
+    if color:
+        lines.append(f"{_PAD}\033[{_SUBTITLE_COLOR}m{sub}{_RESET}")
+    else:
+        lines.append(_PAD + sub)
+    lines.append("")
+    return lines
+
+
+def banner(version: str, **kwargs) -> str:
+    return "\n".join(render(version, **kwargs))

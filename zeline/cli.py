@@ -35,6 +35,7 @@ import requests
 import yaml
 
 from zeline import __version__, config, skills
+from zeline import branding
 from zeline._termkey import raw_mode, read_key, read_menu_key, read_secret
 from zeline.agent import ZelineError
 from zeline.gateways import GATEWAYS, gateway_status, run_all
@@ -47,19 +48,14 @@ from zeline.sessions import SessionStore
 
 def _terminal_color_enabled() -> bool:
     """Use ANSI color only when the terminal explicitly supports it."""
-    if os.environ.get("NO_COLOR") is not None or os.environ.get("TERM") == "dumb":
-        return False
-    return bool(os.environ.get("FORCE_COLOR")) or sys.stdout.isatty()
+    return branding.color_enabled()
 
 
+# Kept as module attributes because tests and the Windows cp1252 encoding guard
+# reference them by name. The living identity is in zeline.branding; these are
+# the plain-text spellings used for assertions and legacy-console safety checks.
 BANNER_TITLE = "Z  E  L  I  N  E"
-BANNER_SUBTITLE = f"AGENTIC AI BY ZEROLINEAR • v{__version__}"
-# Inner box width: widest content line + 3 spaces of padding each side.
-_BANNER_INNER = max(len(BANNER_TITLE), len(BANNER_SUBTITLE)) + 6
-
-
-def _boxed_line(text: str) -> str:
-    return text.center(_BANNER_INNER)
+BANNER_SUBTITLE = branding.subtitle(__version__)
 
 
 # Shared palette (256-color). Gated by _terminal_color_enabled() via _paint().
@@ -82,32 +78,41 @@ def _label(text: str) -> str:
 
 
 def _print_banner() -> None:
-    """Render the boxed Zeline terminal identity (title + subtitle in one frame)."""
-    top = "╭" + "─" * _BANNER_INNER + "╮"
-    mid = "├" + "─" * _BANNER_INNER + "┤"
-    bottom = "╰" + "─" * _BANNER_INNER + "╯"
-    title = _boxed_line(BANNER_TITLE)
-    subtitle = _boxed_line(BANNER_SUBTITLE)
-    if _terminal_color_enabled():
-        frame = "\033[38;5;25m"   # dark blue frame
-        white = "\033[97m\033[1m"  # bright white bold title
-        blue = "\033[38;5;39m"    # regular blue subtitle
-        reset = "\033[0m"
-        print(
-            f"\n{frame}{top}{reset}\n"
-            f"{frame}│{reset}{white}{title}{reset}{frame}│{reset}\n"
-            f"{frame}{mid}{reset}\n"
-            f"{frame}│{reset}{blue}{subtitle}{reset}{frame}│{reset}\n"
-            f"{frame}{bottom}{reset}\n"
-        )
-    else:
-        print(
-            f"\n{top}\n"
-            f"│{title}│\n"
-            f"{mid}\n"
-            f"│{subtitle}│\n"
-            f"{bottom}\n"
-        )
+    """Render the shared Zeline wordmark (full block art, or compact ASCII).
+
+    Delegates to zeline.branding so the CLI, installer, and every screen show
+    one identity. Auto-detects colour, unicode capability, and terminal width.
+    """
+    print(branding.banner(__version__))
+
+
+def _provider_display() -> str:
+    """Human provider name for the chat header; never the base URL or key."""
+    provider = config.stored_config_copy().get("provider", {})
+    name = str(provider.get("name", "")).strip()
+    if name:
+        return name
+    from urllib.parse import urlparse
+
+    return urlparse(config.BASE_URL).hostname or "unknown"
+
+
+def _print_session_header() -> None:
+    """Aligned key:value session card under the banner (agent/model/provider).
+
+    Labels are padded to one width so the values line up in a column, matching
+    the tidy look of the /status and /model cards on the gateways.
+    """
+    rows = [
+        ("Agent", config.NAME),
+        ("Model", config.MODEL),
+        ("Provider", _provider_display()),
+        ("Tools", "full (local operator)"),
+    ]
+    pad = max(len(label) for label, _ in rows)
+    for label, value in rows:
+        print(f"  {_label(f'{label:<{pad}} :')} {value}")
+    print()
 
 
 def _read_secret_key() -> str:
@@ -828,9 +833,7 @@ def cmd_chat(query: str | None = None) -> int:
         print("[!] API key is empty. Run: zeline setup")
         return 2
     _print_banner()
-    print(f"  {_label('Agent :')} {config.NAME}")
-    print(f"  {_label('Model :')} {config.MODEL}")
-    print(f"  {_label('Tool profile:')} full (local operator)\n")
+    _print_session_header()
     sessions = SessionStore(max_sessions=1)
 
     # In the CLI the operator is right here at the keyboard, so ask_user can be
@@ -887,7 +890,8 @@ def cmd_chat(query: str | None = None) -> int:
             print(f"[error] {exc}")
             return 1
 
-    print("Type 'exit' to quit.\n")
+    hint = "Type your message. Commands: undo · exit"
+    print(f"{_paint(hint, COLOR_BLUE) if _terminal_color_enabled() else hint}\n")
     while True:
         try:
             text = input(f"{_paint('you ›', COLOR_LIGHT_BLUE) if _terminal_color_enabled() else 'you ›'} ").strip()

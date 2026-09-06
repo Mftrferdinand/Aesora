@@ -121,7 +121,7 @@ jobs:
         run: |
           $legacy = powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -PlatformInfo | Out-String
           Write-Host $legacy
-          if ($legacy -notmatch 'Z  E  L  I  N  E') { throw 'legacy PowerShell banner missing' }
+          if ($legacy -notmatch 'AGENTIC AI BY ZEROLINEAR') { throw 'legacy PowerShell banner missing' }
           if ($legacy -notmatch 'Windows PowerShell 5.1') { throw 'platform report missing' }
           if ($legacy -match 'â|�') { throw 'legacy PowerShell banner is mojibake' }
 
