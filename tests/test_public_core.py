@@ -2863,11 +2863,11 @@ class ZelinePublicCoreTests(unittest.TestCase):
         self.assertLessEqual(max(len(b["callback_data"]) for b in buttons), 64)
 
     def test_telegram_model_picker_multi_route_opens_route_page(self):
-        # A router catalog mixing routes (Gr/, tabi/, cb/) must open a ROUTE
+        # A router catalog mixing routes (Gr/, tabi/, cbai/) must open a ROUTE
         # picker first (GoRouter, Codebuddy, …), not a paginated model list.
         telegram = importlib.import_module("zeline.gateways.telegram")
-        models = ["Gr/claude-opus-5", "Gr/gpt-5", "cb/glm-4.7", "cb/glm-5.3", "tabi/grok-4"]
-        text, markup = telegram._model_picker_payload(models, "cb/glm-4.7", 0, "9Router")
+        models = ["Gr/claude-opus-5", "Gr/gpt-5", "cbai/glm-4.7", "cbai/glm-5.3", "tabi/grok-4"]
+        text, markup = telegram._model_picker_payload(models, "cbai/glm-4.7", 0, "9Router")
         buttons = [b for row in markup["inline_keyboard"] for b in row]
         route_buttons = [b for b in buttons if b["callback_data"].startswith("route:")]
         # Route buttons carry the friendly vendor label and the active route is
@@ -2885,14 +2885,14 @@ class ZelinePublicCoreTests(unittest.TestCase):
         # with global indexes so the existing model: callback path still works,
         # and a « Routes button to climb back to the route list.
         telegram = importlib.import_module("zeline.gateways.telegram")
-        models = ["Gr/a", "cb/b", "cb/c"]
+        models = ["Gr/a", "cbai/b", "cbai/c"]
         groups = telegram._model_vendor_groups(models)
-        text, markup = telegram._grouped_model_picker_payload(models, "cb/b", 0, "9Router", groups, 1)
+        text, markup = telegram._grouped_model_picker_payload(models, "cbai/b", 0, "9Router", groups, 1)
         buttons = [b for row in markup["inline_keyboard"] for b in row]
         model_buttons = [b for b in buttons if b["callback_data"].startswith("model:") and b["callback_data"] != "model:cancel"]
         self.assertIn("9Router › Codebuddy", text)
         self.assertIn("2 models", text)
-        # Global indexes into the full catalog (cb/b=1, cb/c=2), not per-route.
+        # Global indexes into the full catalog (cbai/b=1, cbai/c=2), not per-route.
         self.assertEqual([b["callback_data"] for b in model_buttons], ["model:0:1", "model:0:2"])
         self.assertIn({"text": "« Routes", "callback_data": "routes:0"}, buttons)
         self.assertLessEqual(max(len(b["callback_data"]) for b in buttons), 64)
@@ -2911,7 +2911,7 @@ class ZelinePublicCoreTests(unittest.TestCase):
         provider = {"slug": "9router", "name": "9Router", "base_url": "https://r.example/v1", "api_key": "k", "model": "Gr/a"}
         with mock.patch.object(telegram, "_api_call") as api, \
              mock.patch.object(telegram, "_configured_providers", return_value=[provider]), \
-             mock.patch.object(telegram, "_discover_provider_models", return_value=["Gr/a", "cb/b"]), \
+             mock.patch.object(telegram, "_discover_provider_models", return_value=["Gr/a", "cbai/b"]), \
              mock.patch.object(telegram.config, "save_config") as save:
             sessions = mock.Mock()
             telegram._handle_callback(
@@ -2931,7 +2931,7 @@ class ZelinePublicCoreTests(unittest.TestCase):
         provider = {"slug": "9router", "name": "9Router", "base_url": "https://r.example/v1", "api_key": "k", "model": "cb/b"}
         with mock.patch.object(telegram, "_api_call") as api, \
              mock.patch.object(telegram, "_configured_providers", return_value=[provider]), \
-             mock.patch.object(telegram, "_discover_provider_models", return_value=["Gr/a", "cb/b"]), \
+             mock.patch.object(telegram, "_discover_provider_models", return_value=["Gr/a", "cbai/b"]), \
              mock.patch.object(telegram.config, "save_config") as save:
             sessions = mock.Mock()
             telegram._handle_callback(
