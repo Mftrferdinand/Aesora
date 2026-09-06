@@ -62,6 +62,7 @@ BANNER_SUBTITLE = branding.subtitle(__version__)
 COLOR_BLUE = "\033[38;5;39m"        # regular blue — labels before ':'
 COLOR_LIGHT_BLUE = "\033[38;5;117m"  # light blue — the 'you' prompt
 COLOR_DARK_BLUE = "\033[38;5;27m"    # dark blue — the 'Zeline' reply prefix
+COLOR_RED = "\033[38;5;203m"        # soft red — error lines
 COLOR_RESET = "\033[0m"
 
 
@@ -101,8 +102,12 @@ def _print_session_header() -> None:
     """Aligned key:value session card under the banner (agent/model/provider).
 
     Labels are padded to one width so the values line up in a column, matching
-    the tidy look of the /status and /model cards on the gateways.
+    the tidy look of the /status and /model cards on the gateways. A thin rule
+    (box-drawing on capable terminals, ASCII on legacy) separates the wordmark
+    from the card so the two read as distinct blocks on Termux and Windows alike.
     """
+    unicode_ok = branding.supports_unicode()
+    color = _terminal_color_enabled()
     rows = [
         ("Agent", config.NAME),
         ("Model", config.MODEL),
@@ -110,8 +115,11 @@ def _print_session_header() -> None:
         ("Tools", "full (local operator)"),
     ]
     pad = max(len(label) for label, _ in rows)
+    rule = branding.rule(unicode_ok=unicode_ok)
+    print(_paint(rule, COLOR_DARK_BLUE) if color else rule)
     for label, value in rows:
         print(f"  {_label(f'{label:<{pad}} :')} {value}")
+    print(_paint(rule, COLOR_DARK_BLUE) if color else rule)
     print()
 
 
@@ -539,11 +547,11 @@ def cmd_setup_center() -> int:
         choice = _arrow_menu(
             "Configure:",
             [
-                "Gateway - Telegram, WhatsApp, or webhook",
-                "Model - provider, endpoint, API key, and model",
-                "Tools - security profile and workspace",
-                "Integrations - MCP servers and external tools",
-                "Agent - identity, sessions, streaming, tool rounds",
+                "Gateway",
+                "Model",
+                "Tools",
+                "Integrations",
+                "Agent",
                 "Done",
             ],
         )
@@ -890,11 +898,17 @@ def cmd_chat(query: str | None = None) -> int:
             print(f"[error] {exc}")
             return 1
 
-    hint = "Type your message. Commands: undo · exit"
-    print(f"{_paint(hint, COLOR_BLUE) if _terminal_color_enabled() else hint}\n")
+    unicode_ok = branding.supports_unicode()
+    color = _terminal_color_enabled()
+    chevron = branding.prompt_glyph(unicode_ok)
+    sep = "\u2022" if unicode_ok else "-"
+    hint = f"Type your message.  {sep}  undo  {sep}  exit"
+    print(f"{_paint(hint, COLOR_BLUE) if color else hint}\n")
+    you_prompt = f"you {chevron}"
+    you_rendered = f"{_paint(you_prompt, COLOR_LIGHT_BLUE) if color else you_prompt} "
     while True:
         try:
-            text = input(f"{_paint('you ›', COLOR_LIGHT_BLUE) if _terminal_color_enabled() else 'you ›'} ").strip()
+            text = input(you_rendered).strip()
         except (EOFError, KeyboardInterrupt):
             _run_reflection(sessions)
             print("\nGoodbye!")
@@ -918,9 +932,10 @@ def cmd_chat(query: str | None = None) -> int:
             continue
         try:
             answer = ask(text)
-            print(f"{_paint(f'{config.NAME} ›', COLOR_DARK_BLUE)} {answer}\n")
+            reply_prompt = f"{config.NAME} {chevron}"
+            print(f"{_paint(reply_prompt, COLOR_DARK_BLUE) if color else reply_prompt} {answer}\n")
         except ZelineError as exc:
-            print(f"\033[31m[error] {exc}\033[0m\n")
+            print(f"{_paint(f'[error] {exc}', COLOR_RED) if color else f'[error] {exc}'}\n")
 
 
 def cmd_mcp(action: str, name: str | None = None, *, transport: str = "", command: str = "", url: str = "") -> int:

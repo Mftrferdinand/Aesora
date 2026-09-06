@@ -68,6 +68,39 @@ class BrandingTests(unittest.TestCase):
         with mock.patch.dict(os.environ, {"NO_COLOR": "1"}, clear=False):
             self.assertFalse(branding.color_enabled(io.StringIO()))
 
+    def test_gradient_is_blue_leaning_and_darkens_monotonically(self):
+        """The wordmark must go light-blue -> dark-blue, never bounce, never cyan.
+
+        Regression for the reported "muda→tua→muda→tua" bounce: every row must be
+        darker than the one above (monotonic luminance) and blue-dominant (the
+        256-colour cube's blue channel strictly greater than green, so no teal).
+        """
+        codes = [int(sgr.split(";")[-1]) for sgr in branding._GRADIENT]
+        self.assertEqual(len(codes), len(branding.WORDMARK_FULL))
+
+        def rgb(n: int) -> tuple[int, int, int]:
+            n -= 16
+            r, g, b = n // 36, (n % 36) // 6, n % 6
+            scale = lambda v: 0 if v == 0 else 55 + 40 * v
+            return scale(r), scale(g), scale(b)
+
+        def lum(n: int) -> float:
+            r, g, b = rgb(n)
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        lums = [lum(c) for c in codes]
+        self.assertEqual(lums, sorted(lums, reverse=True), "gradient must darken monotonically")
+        for c in codes:
+            r, g, b = rgb(c)
+            self.assertGreater(b, g, f"colour {c} is not blue-leaning (b={b} g={g})")
+
+    def test_prompt_glyph_and_rule_degrade_on_legacy_encoding(self):
+        self.assertEqual(branding.prompt_glyph(unicode_ok=True), "\u276f")
+        self.assertEqual(branding.prompt_glyph(unicode_ok=False), ">")
+        self.assertIn("\u2500", branding.rule(width=20, unicode_ok=True))
+        self.assertNotIn("\u2500", branding.rule(width=20, unicode_ok=False))
+        self.assertIn("-", branding.rule(width=20, unicode_ok=False))
+
     def test_color_forced_on_with_force_color(self):
         with mock.patch.dict(os.environ, {"FORCE_COLOR": "1"}, clear=False):
             with mock.patch.dict(os.environ, {}, clear=False):

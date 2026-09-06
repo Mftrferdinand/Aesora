@@ -37,12 +37,38 @@ COMPACT_WIDTH = 27
 
 CREDIT = "AGENTIC AI BY ZEROLINEAR"
 
-# Cyan -> blue vertical gradient, one 256-colour SGR code per full-wordmark row.
-_GRADIENT = ("38;5;51", "38;5;45", "38;5;39", "38;5;38", "38;5;32", "38;5;27")
-_COMPACT_COLOR = "38;5;39"
+# Vertical gradient for the full wordmark: whitish-blue → light blue → blue →
+# dark blue, one 256-colour SGR per row. Chosen so luminance falls MONOTONICALLY
+# (no bright row after a dark one) and every step is blue-leaning (blue > green),
+# so it never drifts into cyan/teal. This is the "dr biru muda keputihan → biru
+# tua" ramp; the old 51/45/39/38/32/27 mixed cyan+teal and looked like it bounced
+# light→dark→light.
+_GRADIENT = ("38;5;189", "38;5;153", "38;5;111", "38;5;75", "38;5;33", "38;5;26")
+_COMPACT_COLOR = "38;5;111"
 _SUBTITLE_COLOR = "38;5;244"
 _RESET = "\033[0m"
 _PAD = "  "
+
+
+def prompt_glyph(unicode_ok: bool | None = None) -> str:
+    """The chevron used for prompts (you ❯ / Zeline ❯), ASCII '>' on legacy.
+
+    Gated on the same block-glyph capability as the wordmark, so a console that
+    can render the banner also renders the chevron, and a legacy cp1252 stream
+    degrades both together instead of printing mojibake.
+    """
+    if unicode_ok is None:
+        unicode_ok = supports_unicode()
+    return "\u276f" if unicode_ok else ">"
+
+
+def rule(width: int | None = None, *, unicode_ok: bool | None = None) -> str:
+    """A thin horizontal rule sized to the wordmark, box-drawing or ASCII."""
+    if unicode_ok is None:
+        unicode_ok = supports_unicode()
+    if width is None:
+        width = FULL_WIDTH
+    return (_PAD + ("\u2500" if unicode_ok else "-") * max(4, width))
 
 
 def color_enabled(stream=None) -> bool:
