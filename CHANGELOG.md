@@ -1,4 +1,18 @@
 # Changelog
+## [0.3.3] — 2026-09-06
+
+### Added
+- Self-learning lessons wired into runtime: auto-capture tool failures, auto-resolve on retry success
+- `resolve_lesson` tool (model-callable, full profile) for explicit lesson resolution
+- Reflection prompt updated to mention lessons + `resolve_lesson`
+- `/lessons` command (Telegram, owner-only) + `zeline lessons` CLI command
+- Credential redaction in lessons (`_redact_text`, `_safe_arg_value`, `_escape_prompt_text`)
+- Cumulative reflection counter (`_tool_calls_since_reflection`) + `_refresh_system_prompt()`
+
+### Fixed
+- **HIGH**: Prompt injection hardening — strip XML-like tags from untrusted error/fix text before system prompt injection
+- **MEDIUM**: File handle leak on background `Popen` failure (tools.py)
+- **LOW**: Remove dead code `_parse_ddg_html`
 
 Every entry links to the pull request that made the change. Versions follow
 [Semantic Versioning](https://semver.org/); the `0.x` line means the public
@@ -301,7 +315,8 @@ release's documented one-liner keeps working after a newer release ships.
 Release notes for 0.2.5 and earlier are on the
 [releases page](https://github.com/Mftrferdinand/Zeline/releases).
 
-[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.2...main
+[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.3...main
+[0.3.3]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.3
 [0.3.2]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.2
 [0.3.1]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.0

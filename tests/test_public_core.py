@@ -1710,7 +1710,7 @@ class ZelinePublicCoreTests(unittest.TestCase):
         commands = telegram._telegram_commands()
         self.assertEqual(
             [item["command"] for item in commands],
-            ["start", "model", "status", "repository", "deleterepository", "undo", "stats", "events", "stop", "new", "version", "update"],
+            ["start", "model", "status", "repository", "deleterepository", "undo", "stats", "events", "lessons", "stop", "new", "version", "update"],
         )
         self.assertEqual(commands[0]["description"], "Start Zeline")
         by_name = {item["command"]: item["description"] for item in commands}
@@ -1746,7 +1746,7 @@ class ZelinePublicCoreTests(unittest.TestCase):
 
     def test_telegram_undo_and_stats_are_owner_only(self):
         telegram = importlib.import_module("zeline.gateways.telegram")
-        for command in ("/undo", "/stats", "/events"):
+        for command in ("/undo", "/stats", "/events", "/lessons"):
             with self.subTest(command=command), mock.patch.object(telegram, "_api_call") as api:
                 handled = telegram._handle_command_update(
                     "bot-api", command, object(), "telegram:42", 42,
