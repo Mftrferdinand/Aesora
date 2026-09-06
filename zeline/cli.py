@@ -509,7 +509,7 @@ def cmd_setup_integrations() -> int:
     """Small MCP integration wizard; native integrations arrive as modules."""
     while True:
         choice = _arrow_menu(
-            "Integrations:",
+            "MCP Servers:",
             [
                 "List configured MCP servers",
                 "Add MCP server (stdio command)",
@@ -519,19 +519,19 @@ def cmd_setup_integrations() -> int:
             ],
         )
         if choice in {-1, 4}:
-            print("Integrations setup done.")
+            print("MCP servers setup done.")
             return 0
         if choice == 0:
             cmd_mcp("list")
         elif choice == 1:
-            name = _ask("Integration name", "").strip()
+            name = _ask("MCP server name", "").strip()
             command = _ask("Command", "").strip()
             if not name or not command:
                 print("Name and command are required.")
                 continue
             cmd_mcp("add", name, command=command)
         elif choice == 2:
-            name = _ask("Integration name", "").strip()
+            name = _ask("MCP server name", "").strip()
             url = _ask("HTTP URL", "").strip()
             if not name or not url:
                 print("Name and URL are required.")
@@ -546,7 +546,7 @@ def cmd_setup_center() -> int:
     _print_banner()
     print(f"==> SETUP CENTER  ·  {config.CONFIG_FILE}")
     # _arrow_menu prefixes every row with the '[•]' bullet, so pass plain labels.
-    sections = ["Gateway", "Model", "Tools", "Integrations", "Agent", "Done"]
+    sections = ["Gateway", "Model", "Tools", "MCP Servers", "Agent", "Done"]
     while True:
         choice = _arrow_menu("Configure:", sections)
         if choice in {-1, 5}:
