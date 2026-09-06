@@ -1398,10 +1398,10 @@ class ZelinePublicCoreTests(unittest.TestCase):
         self.assertIn("video", telegram._update_trace({"message": {"chat": {"id": 1}, "video": {"file_id": "m"}}}))
         # callback_data aman: itu identitas tombol buatan kita, bukan teks user.
         callback = telegram._update_trace(
-            {"callback_query": {"id": "9", "data": "grp:0:1", "from": {"id": 5}, "message": {"chat": {"id": 6}}}}
+            {"callback_query": {"id": "9", "data": "route:0:1", "from": {"id": 5}, "message": {"chat": {"id": 6}}}}
         )
         self.assertIn("callback", callback)
-        self.assertIn("data=grp:0:1", callback)
+        self.assertIn("data=route:0:1", callback)
         self.assertIn("chat=6", callback)
 
     def test_dispatch_update_passes_reply_to_message_id(self):
@@ -2862,62 +2862,88 @@ class ZelinePublicCoreTests(unittest.TestCase):
         # Callbacks stay index-based and within Telegram's 64-byte limit.
         self.assertLessEqual(max(len(b["callback_data"]) for b in buttons), 64)
 
-    def test_telegram_model_picker_splits_pages_per_route(self):
-        # A router catalog mixing routes (Gr/, tabi/, cx/) must be paginated one
-        # route per page instead of one long scrolling list of full ids.
+    def test_telegram_model_picker_multi_route_opens_route_page(self):
+        # A router catalog mixing routes (Gr/, tabi/, cb/) must open a ROUTE
+        # picker first (GoRouter, Codebuddy, …), not a paginated model list.
         telegram = importlib.import_module("zeline.gateways.telegram")
-        models = ["Gr/claude-opus-5", "Gr/gpt-5", "tabi/claude-opus-5", "cx/gpt-5-codex"]
-        text, markup = telegram._model_picker_payload(models, "tabi/claude-opus-5", 0, "9Router")
-        buttons = [button for row in markup["inline_keyboard"] for button in row]
-        model_buttons = [b for b in buttons if b["callback_data"].startswith("model:") and b["callback_data"] != "model:cancel"]
-        # Page 1 = the first route only, labelled with its friendly name.
-        self.assertIn("GoRouter", text)
-        self.assertIn("(1/3)", text)
-        self.assertEqual([b["callback_data"] for b in model_buttons], ["model:0:0", "model:0:1"])
-        self.assertEqual([b["text"] for b in model_buttons], ["claude-opus-5", "gpt-5"])
-        # Navigation carries the target page in the callback (no process state).
-        self.assertIn("grp:0:1", [b["callback_data"] for b in buttons])
+        models = ["Gr/claude-opus-5", "Gr/gpt-5", "cb/glm-4.7", "cb/glm-5.3", "tabi/grok-4"]
+        text, markup = telegram._model_picker_payload(models, "cb/glm-4.7", 0, "9Router")
+        buttons = [b for row in markup["inline_keyboard"] for b in row]
+        route_buttons = [b for b in buttons if b["callback_data"].startswith("route:")]
+        # Route buttons carry the friendly vendor label and the active route is
+        # check-marked.
+        self.assertIn("Select a route", text)
+        self.assertIn("9Router › routes", text)
+        self.assertEqual(
+            [b["callback_data"] for b in route_buttons], ["route:0:0", "route:0:1", "route:0:2"]
+        )
+        self.assertIn("✓ Codebuddy", [b["text"] for b in route_buttons])
         self.assertLessEqual(max(len(b["callback_data"]) for b in buttons), 64)
 
-    def test_telegram_model_picker_pages_wrap_and_keep_global_indexes(self):
-        # Page 2 must keep GLOBAL indexes so the existing model: callback path
-        # still resolves, and Next on the last page wraps back to the first.
+    def test_telegram_route_callback_opens_that_routes_models(self):
+        # route:<provider>:<group> must open the model page for THAT route only,
+        # with global indexes so the existing model: callback path still works,
+        # and a « Routes button to climb back to the route list.
         telegram = importlib.import_module("zeline.gateways.telegram")
-        models = ["Gr/a", "tabi/b", "cx/c"]
-        text, markup = telegram._model_picker_payload(models, "Gr/a", 0, "9Router", 2)
-        buttons = [button for row in markup["inline_keyboard"] for button in row]
+        models = ["Gr/a", "cb/b", "cb/c"]
+        groups = telegram._model_vendor_groups(models)
+        text, markup = telegram._grouped_model_picker_payload(models, "cb/b", 0, "9Router", groups, 1)
+        buttons = [b for row in markup["inline_keyboard"] for b in row]
         model_buttons = [b for b in buttons if b["callback_data"].startswith("model:") and b["callback_data"] != "model:cancel"]
-        self.assertIn("(3/3)", text)
-        self.assertEqual([b["callback_data"] for b in model_buttons], ["model:0:2"])
-        self.assertIn("grp:0:0", [b["callback_data"] for b in buttons])  # Next wraps
-        self.assertIn("grp:0:1", [b["callback_data"] for b in buttons])  # Prev
+        self.assertIn("9Router › Codebuddy", text)
+        self.assertIn("2 models", text)
+        # Global indexes into the full catalog (cb/b=1, cb/c=2), not per-route.
+        self.assertEqual([b["callback_data"] for b in model_buttons], ["model:0:1", "model:0:2"])
+        self.assertIn({"text": "« Routes", "callback_data": "routes:0"}, buttons)
+        self.assertLessEqual(max(len(b["callback_data"]) for b in buttons), 64)
 
-    def test_telegram_model_picker_single_route_has_no_pagination(self):
+    def test_telegram_model_picker_single_route_has_no_route_page(self):
         telegram = importlib.import_module("zeline.gateways.telegram")
         models = ["Gr/a", "Gr/b"]
-        _, markup = telegram._model_picker_payload(models, "Gr/a", 0, "9Router")
+        text, markup = telegram._model_picker_payload(models, "Gr/a", 0, "9Router")
         callbacks = [b["callback_data"] for row in markup["inline_keyboard"] for b in row]
-        self.assertFalse([c for c in callbacks if c.startswith("grp:")])
+        self.assertFalse([c for c in callbacks if c.startswith("route:")])
+        self.assertFalse([c for c in callbacks if c.startswith("routes:")])
+        self.assertIn("Select a model", text)
 
-    def test_telegram_callback_grp_switches_page_without_changing_model(self):
+    def test_telegram_callback_route_switches_route_without_changing_model(self):
         telegram = importlib.import_module("zeline.gateways.telegram")
         provider = {"slug": "9router", "name": "9Router", "base_url": "https://r.example/v1", "api_key": "k", "model": "Gr/a"}
         with mock.patch.object(telegram, "_api_call") as api, \
              mock.patch.object(telegram, "_configured_providers", return_value=[provider]), \
-             mock.patch.object(telegram, "_discover_provider_models", return_value=["Gr/a", "tabi/b"]), \
+             mock.patch.object(telegram, "_discover_provider_models", return_value=["Gr/a", "cb/b"]), \
              mock.patch.object(telegram.config, "save_config") as save:
             sessions = mock.Mock()
             telegram._handle_callback(
                 "https://api.example",
-                {"id": "1", "data": "grp:0:1", "message": {"chat": {"id": 7}, "message_id": 9}},
+                {"id": "1", "data": "route:0:1", "message": {"chat": {"id": 7}, "message_id": 9}},
                 sessions,
             )
-        # Paging must only re-render the picker: no config write, no session switch.
+        # Opening a route must only re-render the picker: no config write, no session switch.
         save.assert_not_called()
         sessions.switch_provider.assert_not_called()
         edits = [c for c in api.call_args_list if len(c.args) > 1 and c.args[1] == "editMessageText"]
         self.assertTrue(edits)
-        self.assertIn("TabiToken", str(edits[-1].kwargs.get("text", "")))
+        self.assertIn("Codebuddy", str(edits[-1].kwargs.get("text", "")))
+
+    def test_telegram_callback_routes_returns_to_route_list(self):
+        telegram = importlib.import_module("zeline.gateways.telegram")
+        provider = {"slug": "9router", "name": "9Router", "base_url": "https://r.example/v1", "api_key": "k", "model": "cb/b"}
+        with mock.patch.object(telegram, "_api_call") as api, \
+             mock.patch.object(telegram, "_configured_providers", return_value=[provider]), \
+             mock.patch.object(telegram, "_discover_provider_models", return_value=["Gr/a", "cb/b"]), \
+             mock.patch.object(telegram.config, "save_config") as save:
+            sessions = mock.Mock()
+            telegram._handle_callback(
+                "https://api.example",
+                {"id": "1", "data": "routes:0", "message": {"chat": {"id": 7}, "message_id": 9}},
+                sessions,
+            )
+        save.assert_not_called()
+        sessions.switch_provider.assert_not_called()
+        edits = [c for c in api.call_args_list if len(c.args) > 1 and c.args[1] == "editMessageText"]
+        self.assertTrue(edits)
+        self.assertIn("Select a route", str(edits[-1].kwargs.get("text", "")))
 
     def test_discover_provider_models_uses_cache_to_avoid_repeat_calls(self):
         # Picker taps provider then model → without cache that's 2 network calls.

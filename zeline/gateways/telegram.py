@@ -105,6 +105,8 @@ _VENDOR_LABELS = {
     "gr": "GoRouter",
     "tabi": "TabiToken",
     "cx": "Codex",
+    "cb": "Codebuddy",
+    "codebuddy": "Codebuddy",
     "nvidia": "NVIDIA",
     "oc": "OpenModel",
     "bai": "B.ai",
@@ -966,22 +968,19 @@ def _model_picker_payload(
     current_model: str,
     provider_index: int | None = None,
     provider_name: str = "",
-    group_index: int = 0,
 ) -> tuple[str, dict[str, Any]]:
     """Bangun inline picker dengan callback pendek agar aman di batas 64 byte.
 
     Bila katalog provider berisi beberapa rute (mis. 9Router menyajikan Gr,
-    tabi, dan cx sekaligus), model dipecah PER RUTE dan ditampilkan satu
-    halaman per rute dengan tombol Next/Prev. Satu daftar 22 model campur
-    membuat aes harus scroll jauh dan label harus memakai ID penuh supaya tidak
-    ambigu; dipisah per rute, labelnya cukup nama modelnya saja dan nama rute
-    naik ke teks status di atas tombol.
+    tabi, dan cb sekaligus), pemilihannya bertingkat: halaman provider membuka
+    halaman RUTE (`_route_picker_payload`), lalu rute yang di-tap membuka
+    halaman model rute itu. Halaman ini menampilkan satu rute saja — tanpa
+    Next/Prev — supaya pilihan fokus dan label cukup nama modelnya saja.
     """
     groups = _model_vendor_groups(models) if provider_index is not None else []
     if len(groups) > 1:
-        return _grouped_model_picker_payload(
-            models, current_model, provider_index, provider_name, groups, group_index
-        )
+        # Router: buka daftar rute dulu, model per-rute di halaman berikutnya.
+        return _route_picker_payload(provider_index, provider_name, groups, current_model)
     buttons = []
     # Deteksi label yang bakal tabrakan bila hanya diambil segmen terakhir.
     # Di router seperti 9Router, ID model berprefix rute (mis. `Gr/claude-opus-4-8`
@@ -1011,6 +1010,37 @@ def _model_picker_payload(
     )
 
 
+def _route_picker_payload(
+    provider_index: int,
+    provider_name: str,
+    groups: list[tuple[str, list[int]]],
+    current_model: str,
+) -> tuple[str, dict[str, Any]]:
+    """Satu halaman = daftar rute. Tap rute → halaman model rute itu.
+
+    Callback pendek `route:<provider_index>:<group_index>` aman di batas 64 byte
+    dan tanpa state proses, jadi tombol tetap hidup setelah gateway restart.
+    """
+    buttons = []
+    for group_index, (key, indices) in enumerate(groups):
+        label = _vendor_label(key)
+        # Tandai rute yang memuat model aktif (mis. saat ini Gr/… dipakai).
+        if current_model and current_model.split("/", 1)[0] == key:
+            label = f"✓ {label}"
+        buttons.append({"text": label[:60], "callback_data": f"route:{provider_index}:{group_index}"})
+    per_row = 2 if all(len(button["text"]) <= 22 for button in buttons) else 1
+    rows = [buttons[index:index + per_row] for index in range(0, len(buttons), per_row)]
+    rows.append([{"text": "« Back", "callback_data": "provider:back"}])
+    rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
+    header = f"{provider_name} › routes" if provider_name else "Routes"
+    text = (
+        f"Select a route\n"
+        f"{header} • {len(groups)} routes\n"
+        f"Current: {current_model or 'unknown'}"
+    )
+    return text, {"inline_keyboard": rows}
+
+
 def _grouped_model_picker_payload(
     models: list[str],
     current_model: str,
@@ -1019,9 +1049,8 @@ def _grouped_model_picker_payload(
     groups: list[tuple[str, list[int]]],
     group_index: int,
 ) -> tuple[str, dict[str, Any]]:
-    """Satu halaman picker = satu rute. Next/Prev berputar antar rute."""
-    total = len(groups)
-    page = group_index % total  # berputar: Next di halaman terakhir kembali ke awal
+    """Satu halaman picker = model milik SATU rute. Kembali ke daftar rute."""
+    page = group_index % len(groups)
     key, indices = groups[page]
     label_name = _vendor_label(key)
 
@@ -1035,19 +1064,13 @@ def _grouped_model_picker_payload(
         buttons.append({"text": label[:60], "callback_data": f"model:{provider_index}:{index}"})
     per_row = 2 if all(len(button["text"]) <= 22 for button in buttons) else 1
     rows = [buttons[index:index + per_row] for index in range(0, len(buttons), per_row)]
-
-    navigation = []
-    if total > 2:
-        navigation.append({"text": "‹ Prev", "callback_data": f"grp:{provider_index}:{(page - 1) % total}"})
-    navigation.append({"text": "Next ›", "callback_data": f"grp:{provider_index}:{(page + 1) % total}"})
-    rows.append(navigation)
+    rows.append([{"text": "« Routes", "callback_data": f"routes:{provider_index}"}])
     rows.append([{"text": "« Back", "callback_data": "provider:back"}])
     rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
 
     header = f"{provider_name} › {label_name}" if provider_name else label_name
-    next_label = _vendor_label(groups[(page + 1) % total][0])
     text = (
-        f"Select a model ({page + 1}/{total})\n"
+        f"Select a model\n"
         f"{header} • {len(indices)} models\n"
         f"Current: {current_model or 'unknown'}"
     )
@@ -1960,9 +1983,22 @@ def _handle_callback(api: str, callback: dict[str, Any], sessions) -> None:
         picker_text, markup = _provider_picker_payload(providers, _active_provider_slug(providers))
         _edit_interactive(api, chat_id, message_id, picker_text, reply_markup=markup)
         return
-    if data.startswith("grp:"):
-        # Pindah halaman rute pada picker model. Indeks halaman ikut di callback
-        # (bukan state proses) supaya tombol tetap hidup setelah gateway restart.
+    if data.startswith("routes:"):
+        # Kembali ke daftar rute milik satu provider (router seperti 9Router).
+        try:
+            provider_index = int(data.split(":", 1)[1])
+            provider = providers[provider_index]
+        except (ValueError, IndexError):
+            _edit_interactive(api, chat_id, message_id, "Model selection expired. Run /model again.")
+            return
+        models = _discover_provider_models(provider)
+        picker_text, markup = _model_picker_payload(
+            models, provider.get("model", ""), provider_index, provider.get("name", provider["slug"])
+        )
+        _edit_interactive(api, chat_id, message_id, picker_text, reply_markup=markup)
+        return
+    if data.startswith("route:"):
+        # Buka halaman model untuk SATU rute: route:<provider>:<group>.
         parts = data.split(":")
         try:
             provider_index = int(parts[1])
@@ -1972,11 +2008,16 @@ def _handle_callback(api: str, callback: dict[str, Any], sessions) -> None:
             _edit_interactive(api, chat_id, message_id, "Model selection expired. Run /model again.")
             return
         models = _discover_provider_models(provider)
-        picker_text, markup = _model_picker_payload(
+        groups = _model_vendor_groups(models)
+        if not groups:
+            _edit_interactive(api, chat_id, message_id, "No models found. Run /model again.")
+            return
+        picker_text, markup = _grouped_model_picker_payload(
             models,
             provider.get("model", ""),
             provider_index,
             provider.get("name", provider["slug"]),
+            groups,
             group_index,
         )
         _edit_interactive(api, chat_id, message_id, picker_text, reply_markup=markup)
