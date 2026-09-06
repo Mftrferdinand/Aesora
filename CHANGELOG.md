@@ -10,6 +10,29 @@ release's documented one-liner keeps working after a newer release ships.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-06
+
+### Added
+
+- `npm install -g zeline` is now an install route on every platform with
+  Node.js ≥ 18. The wrapper is a thin distribution shim — it does not
+  reimplement Zeline in JavaScript. It detects Python 3.10+ on your `PATH`,
+  downloads the same versioned wheel and `SHA256SUMS` from the matching
+  GitHub release, verifies the SHA-256 checksum (same trust path as
+  `install.sh` and `install.ps1`), and installs into the same private
+  runtime at `~/.local/share/zeline`. The `zeline` bin shim then launches
+  `python -m zeline.cli` against that runtime. `curl` and `iwr` remain
+  available for machines without Node.js — npm is a parallel route, not a
+  replacement. ([#253](https://github.com/Mftrferdinand/Zeline/pull/253),
+  [#254](https://github.com/Mftrferdinand/Zeline/pull/254))
+
+### Changed
+
+- The npm wrapper prefers `py -3` on Windows and rejects the Microsoft
+  Store `python.exe` stub by checking `sys.executable` for `WindowsApps` —
+  the same guard `install.ps1` uses — so a machine without real Python
+  gets a clear error instead of a Store popup.
+
 ## [0.2.9] — 2026-09-04
 
 ### Added
@@ -245,7 +268,8 @@ release's documented one-liner keeps working after a newer release ships.
 Release notes for 0.2.5 and earlier are on the
 [releases page](https://github.com/Mftrferdinand/Zeline/releases).
 
-[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.2.9...main
+[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.0...main
+[0.3.0]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.0
 [0.2.9]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.9
 [0.2.8]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.8
 [0.2.7]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.7
