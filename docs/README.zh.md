@@ -74,6 +74,21 @@ iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v
 
 然后运行 `zeline setup`。
 
+### npm（Node.js ≥ 18）
+
+如果你已使用 npm，封装器会在首次运行时自动完成同样的已校验 wheel 安装
+——无需 `curl` 或 `iwr`：
+
+```sh
+npm install -g zeline
+zeline setup
+```
+
+封装器会检测 `PATH` 中的 Python 3.10+，从 GitHub 发布下载同一版本的
+wheel 与 `SHA256SUMS`，校验校验和，并安装到同一个私有运行时
+（`~/.local/share/zeline`）。上方的 `curl` 与 `iwr` 路径仍适用于
+没有 Node.js 的机器。
+
 ### 独立验证（可选）
 
 安装脚本对 wheel 的校验来自与脚本自身相同的发布，因此它证明的是完整性而非来源。
