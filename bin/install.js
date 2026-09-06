@@ -20,8 +20,8 @@ const path = require("path");
 const os = require("os");
 
 // --- Pinned release metadata (mirrors install.sh VERSION/REF) --------------
-const VERSION = "0.2.9";
-const REF = "v0.2.9";
+const VERSION = "0.3.0";
+const REF = "v0.3.0";
 const REPO = "Mftrferdinand/Zeline";
 const RELEASE_BASE = `https://github.com/${REPO}/releases/download/${REF}`;
 const WHEEL_NAME = `zeline-${VERSION}-py3-none-any.whl`;
@@ -113,30 +113,50 @@ function digestFor(sumsText, filename) {
 // ---------------------------------------------------------------------------
 
 function detectPython() {
+  // On Windows, prefer `py -3` first (the official launcher from python.org)
+  // and reject the Microsoft Store `python.exe` stub, which lives under
+  // WindowsApps and opens the Store instead of running Python. The stub
+  // reports no usable version, so we also validate by running the probe.
+  // Mirrors install.ps1:Resolve-Python.
   const candidates =
     process.env.ZELINE_PYTHON
       ? [process.env.ZELINE_PYTHON]
       : IS_WINDOWS
-        ? ["python", "python3", "py -3"]
+        ? ["py -3", "python", "python3"]
         : ["python3", "python"];
 
   for (const candidate of candidates) {
     const parts = candidate.split(" ");
     try {
-      // Probe version. execFileSync throws on non-zero exit or missing binary.
-      const out = execFileSync(parts[0], parts.slice(1).concat(["-c", "import sys; print('%d.%d.%d' % sys.version_info[:3])"]), {
+      // Probe version + resolved executable. execFileSync throws on non-zero
+      // exit or missing binary. We print three lines: version_ok (1/0),
+      // version string, and sys.executable — same shape as install.ps1.
+      const probe = "import sys; print(1 if sys.version_info >= (3,10) else 0); print('%d.%d.%d' % sys.version_info[:3]); print(sys.executable)";
+      const out = execFileSync(parts[0], parts.slice(1).concat(["-c", probe]), {
         encoding: "utf8",
         stdio: ["ignore", "pipe", "pipe"],
         timeout: 15000,
-      }).trim();
-      const m = out.match(/^(\d+)\.(\d+)\.(\d+)/);
+      });
+      const lines = out.trim().split(/\r?\n/);
+      if (lines.length < 3 || lines[0].trim() !== "1") continue;
+      const version = lines[1].trim();
+      const exePath = lines[2].trim();
+
+      // Reject the Microsoft Store alias stub on Windows. The stub's
+      // resolved executable lives under WindowsApps.
+      if (IS_WINDOWS && /WindowsApps/i.test(exePath)) {
+        warn(`Skipping ${candidate} — it is the Microsoft Store alias stub (${exePath}).`);
+        continue;
+      }
+
+      const m = version.match(/^(\d+)\.(\d+)\.(\d+)/);
       if (!m) continue;
       const major = parseInt(m[1], 10);
       const minor = parseInt(m[2], 10);
       if (major > 3 || (major === 3 && minor >= 10)) {
-        return { bin: candidate, version: out };
+        return { bin: candidate, version, executable: exePath };
       }
-      warn(`Found ${candidate} ${out} but Zeline requires Python 3.10+.`);
+      warn(`Found ${candidate} ${version} but Zeline requires Python 3.10+.`);
     } catch (_e) {
       // Not installed or not on PATH; try the next candidate.
     }

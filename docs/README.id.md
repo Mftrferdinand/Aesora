@@ -58,7 +58,7 @@ Satu baris, dan tidak butuh Python tooling apa pun — dia menyiapkan environmen
 privat untukmu:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.2.9/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
 ```
 
 Lalu `zeline setup`. Installer-nya mengunduh wheel bertag dan memverifikasinya
@@ -71,10 +71,25 @@ gateway saat iSH tidak berada di foreground.
 ### Windows PowerShell
 
 ```powershell
-iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.2.9/install.ps1 -OutFile install.ps1; .\install.ps1
+iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 Lalu `zeline setup`.
+
+### npm (Node.js ≥ 18)
+
+Jika kamu sudah pakai npm, wrapper ini melakukan instalasi wheel terverifikasi
+yang sama saat jalankan pertama kali — tidak perlu `curl` atau `iwr`:
+
+```sh
+npm install -g zeline
+zeline setup
+```
+
+Wrapper mendeteksi Python 3.10+ di `PATH` kamu, mengunduh wheel dan
+`SHA256SUMS` versi yang sama dari rilis GitHub, memverifikasi checksum, dan
+memasang ke runtime privat yang sama (`~/.local/share/zeline`). Rute `curl`
+dan `iwr` di atas tetap tersedia untuk mesin tanpa Node.js.
 
 ### Verifikasi mandiri (opsional)
 
