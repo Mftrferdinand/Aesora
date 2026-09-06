@@ -2835,14 +2835,25 @@ class ZelinePublicCoreTests(unittest.TestCase):
         self.assertEqual(len(finals), 1)
         self.assertNotIn("✅ Successful", str(api.call_args_list))
 
-    def test_telegram_model_picker_marks_current_model_and_uses_short_callbacks(self):
+    def test_telegram_model_picker_sorts_models_into_single_rows_with_original_callbacks(self):
         telegram = importlib.import_module("zeline.gateways.telegram")
-        models = ["vendor/model-a", "vendor/model-b"]
-        text, markup = telegram._model_picker_payload(models, "vendor/model-b")
-        buttons = [button for row in markup["inline_keyboard"] for button in row]
-        self.assertIn("Current: vendor/model-b", text)
-        self.assertEqual([button["callback_data"] for button in buttons[:2]], ["model:0", "model:1"])
-        self.assertEqual(buttons[1]["text"], "✓ model-b")
+        models = ["vendor/Zeta", "vendor/alpha", "vendor/Beta"]
+        text, markup = telegram._model_picker_payload(models, "vendor/Beta")
+        rows = markup["inline_keyboard"]
+        buttons = [button for row in rows for button in row]
+        model_buttons = [
+            button for button in buttons
+            if button["callback_data"].startswith("model:")
+            and button["callback_data"] != "model:cancel"
+        ]
+        self.assertEqual(text, "Select a model")
+        self.assertEqual([button["text"] for button in model_buttons], ["alpha", "✓ Beta", "Zeta"])
+        # Display is alphabetical, callbacks keep indexes in the original catalog.
+        self.assertEqual(
+            [button["callback_data"] for button in model_buttons],
+            ["model:1", "model:2", "model:0"],
+        )
+        self.assertTrue(all(len(row) == 1 for row in rows))
         self.assertLessEqual(max(len(button["callback_data"]) for button in buttons), 64)
 
     def test_telegram_model_picker_shows_full_id_when_tail_collides(self):
@@ -2862,39 +2873,43 @@ class ZelinePublicCoreTests(unittest.TestCase):
         # Callbacks stay index-based and within Telegram's 64-byte limit.
         self.assertLessEqual(max(len(b["callback_data"]) for b in buttons), 64)
 
-    def test_telegram_model_picker_multi_route_opens_route_page(self):
-        # A router catalog mixing routes (Gr/, tabi/, cbai/) must open a ROUTE
-        # picker first (GoRouter, Codebuddy, …), not a paginated model list.
+    def test_telegram_model_picker_multi_route_sorts_providers_into_single_rows(self):
+        # Router routes are presented as providers in alphabetical order, one
+        # button per row. Callback indexes still point to the original groups.
         telegram = importlib.import_module("zeline.gateways.telegram")
-        models = ["Gr/claude-opus-5", "Gr/gpt-5", "cbai/glm-4.7", "cbai/glm-5.3", "tabi/grok-4"]
-        text, markup = telegram._model_picker_payload(models, "cbai/glm-4.7", 0, "9Router")
-        buttons = [b for row in markup["inline_keyboard"] for b in row]
+        models = ["cx/gpt-5.6", "ag/gemini-3.7", "cbai/glm-5.3"]
+        text, markup = telegram._model_picker_payload(models, "cbai/glm-5.3", 0, "9Router")
+        rows = markup["inline_keyboard"]
+        buttons = [b for row in rows for b in row]
         route_buttons = [b for b in buttons if b["callback_data"].startswith("route:")]
-        # Route buttons carry the friendly vendor label and the active route is
-        # check-marked.
-        self.assertIn("Select a route", text)
-        self.assertIn("9Router › routes", text)
+        self.assertEqual(text, "Select a Provider\n9Router › 3 provider")
         self.assertEqual(
-            [b["callback_data"] for b in route_buttons], ["route:0:0", "route:0:1", "route:0:2"]
+            [b["text"] for b in route_buttons],
+            ["Antigravity", "✓ Codebuddy", "Codex"],
         )
-        self.assertIn("✓ Codebuddy", [b["text"] for b in route_buttons])
+        self.assertEqual(
+            [b["callback_data"] for b in route_buttons],
+            ["route:0:1", "route:0:2", "route:0:0"],
+        )
+        self.assertTrue(all(len(row) == 1 for row in rows))
         self.assertLessEqual(max(len(b["callback_data"]) for b in buttons), 64)
 
     def test_telegram_route_callback_opens_that_routes_models(self):
-        # route:<provider>:<group> must open the model page for THAT route only,
+        # route:<provider>:<group> must open the model page for THAT provider only,
         # with global indexes so the existing model: callback path still works,
-        # and a « Routes button to climb back to the route list.
+        # and a « Providers button to climb back to the provider list.
         telegram = importlib.import_module("zeline.gateways.telegram")
-        models = ["Gr/a", "cbai/b", "cbai/c"]
+        models = ["Gr/a", "cbai/Zeta", "cbai/alpha"]
         groups = telegram._model_vendor_groups(models)
-        text, markup = telegram._grouped_model_picker_payload(models, "cbai/b", 0, "9Router", groups, 1)
+        text, markup = telegram._grouped_model_picker_payload(models, "cbai/Zeta", 0, "9Router", groups, 1)
         buttons = [b for row in markup["inline_keyboard"] for b in row]
         model_buttons = [b for b in buttons if b["callback_data"].startswith("model:") and b["callback_data"] != "model:cancel"]
-        self.assertIn("9Router › Codebuddy", text)
-        self.assertIn("2 models", text)
-        # Global indexes into the full catalog (cbai/b=1, cbai/c=2), not per-route.
-        self.assertEqual([b["callback_data"] for b in model_buttons], ["model:0:1", "model:0:2"])
-        self.assertIn({"text": "« Routes", "callback_data": "routes:0"}, buttons)
+        self.assertEqual(text, "Select a model\n9Router › Codebuddy • 2 models")
+        self.assertEqual([b["text"] for b in model_buttons], ["alpha", "✓ Zeta"])
+        # Global indexes into the full catalog remain intact after display sorting.
+        self.assertEqual([b["callback_data"] for b in model_buttons], ["model:0:2", "model:0:1"])
+        self.assertTrue(all(len(row) == 1 for row in markup["inline_keyboard"]))
+        self.assertIn({"text": "« Providers", "callback_data": "routes:0"}, buttons)
         self.assertLessEqual(max(len(b["callback_data"]) for b in buttons), 64)
 
     def test_telegram_model_picker_single_route_has_no_route_page(self):
@@ -2943,7 +2958,10 @@ class ZelinePublicCoreTests(unittest.TestCase):
         sessions.switch_provider.assert_not_called()
         edits = [c for c in api.call_args_list if len(c.args) > 1 and c.args[1] == "editMessageText"]
         self.assertTrue(edits)
-        self.assertIn("Select a route", str(edits[-1].kwargs.get("text", "")))
+        self.assertEqual(
+            str(edits[-1].kwargs.get("text", "")),
+            "Select a Provider\n9Router › 2 provider",
+        )
 
     def test_discover_provider_models_uses_cache_to_avoid_repeat_calls(self):
         # Picker taps provider then model → without cache that's 2 network calls.
@@ -2968,17 +2986,20 @@ class ZelinePublicCoreTests(unittest.TestCase):
         telegram._MODELS_CACHE.clear()
         telegram._MODEL_META_CACHE.clear()
 
-    def test_telegram_model_root_picker_lists_named_providers_first(self):
+    def test_telegram_model_root_picker_sorts_providers_into_single_rows(self):
         telegram = importlib.import_module("zeline.gateways.telegram")
         providers = [
             {"slug": "token-harbor", "name": "Token Harbor", "model": "model-a"},
             {"slug": "nvidia", "name": "NVIDIA NIM", "model": "model-b"},
         ]
         text, markup = telegram._provider_picker_payload(providers, "token-harbor")
-        buttons = [button for row in markup["inline_keyboard"] for button in row]
-        self.assertIn("Select a provider", text)
-        self.assertEqual(buttons[0], {"text": "✓ Token Harbor", "callback_data": "provider:0"})
-        self.assertEqual(buttons[1], {"text": "NVIDIA NIM", "callback_data": "provider:1"})
+        rows = markup["inline_keyboard"]
+        buttons = [button for row in rows for button in row]
+        self.assertEqual(text, "Current: model-a\nSelect a router/provider")
+        # Display is alphabetical, while callbacks retain original provider indexes.
+        self.assertEqual(buttons[0], {"text": "NVIDIA NIM", "callback_data": "provider:1"})
+        self.assertEqual(buttons[1], {"text": "✓ Token Harbor", "callback_data": "provider:0"})
+        self.assertTrue(all(len(row) == 1 for row in rows))
 
     def test_telegram_configured_providers_dedupes_active_label_case_drift(self):
         telegram = importlib.import_module("zeline.gateways.telegram")

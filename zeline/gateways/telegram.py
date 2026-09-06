@@ -992,25 +992,24 @@ def _model_picker_payload(
     # provider/rute mana yang dipilih.
     tails = [model.rsplit("/", 1)[-1] for model in models]
     ambiguous = {tail for tail in tails if tails.count(tail) > 1}
+    entries = []
     for index, model in enumerate(models):
         tail = model.rsplit("/", 1)[-1]
         # Tampilkan ID penuh bila segmen terakhir tidak unik (biar prefix rute
         # terlihat); selain itu segmen terakhir sudah cukup ringkas.
         label = model if tail in ambiguous else tail
+        entries.append((label.casefold(), index, model, label))
+    for _, index, model, label in sorted(entries):
         if model == current_model:
             label = f"✓ {label}"
         callback = f"model:{index}" if provider_index is None else f"model:{provider_index}:{index}"
         buttons.append({"text": label[:60], "callback_data": callback})
-    # Model dengan label panjang (ID penuh) lebih enak dibaca satu per baris.
-    per_row = 1 if ambiguous else 2
-    rows = [buttons[index:index + per_row] for index in range(0, len(buttons), per_row)]
+    rows = [[button] for button in buttons]
     if provider_index is not None:
         rows.append([{"text": "« Back", "callback_data": "provider:back"}])
     rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
-    return (
-        (f"Select a model\n{provider_name} • {len(models)} models\nCurrent: {current_model or 'unknown'}" if provider_name else f"Select a model\nCurrent: {current_model or 'unknown'}"),
-        {"inline_keyboard": rows},
-    )
+    text = f"Select a model\n{provider_name} • {len(models)} models" if provider_name else "Select a model"
+    return text, {"inline_keyboard": rows}
 
 
 def _route_picker_payload(
@@ -1024,23 +1023,22 @@ def _route_picker_payload(
     Callback pendek `route:<provider_index>:<group_index>` aman di batas 64 byte
     dan tanpa state proses, jadi tombol tetap hidup setelah gateway restart.
     """
+    indexed_groups = sorted(
+        enumerate(groups),
+        key=lambda item: (_vendor_label(item[1][0]).casefold(), item[0]),
+    )
     buttons = []
-    for group_index, (key, indices) in enumerate(groups):
+    for group_index, (key, indices) in indexed_groups:
         label = _vendor_label(key)
-        # Tandai rute yang memuat model aktif (mis. saat ini Gr/… dipakai).
+        # Tandai provider/rute yang memuat model aktif tanpa memengaruhi urutan.
         if current_model and current_model.split("/", 1)[0] == key:
             label = f"✓ {label}"
         buttons.append({"text": label[:60], "callback_data": f"route:{provider_index}:{group_index}"})
-    per_row = 2 if all(len(button["text"]) <= 22 for button in buttons) else 1
-    rows = [buttons[index:index + per_row] for index in range(0, len(buttons), per_row)]
+    rows = [[button] for button in buttons]
     rows.append([{"text": "« Back", "callback_data": "provider:back"}])
     rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
-    header = f"{provider_name} › routes" if provider_name else "Routes"
-    text = (
-        f"Select a route\n"
-        f"{header} • {len(groups)} routes\n"
-        f"Current: {current_model or 'unknown'}"
-    )
+    header = f"{provider_name} › {len(groups)} provider" if provider_name else f"{len(groups)} provider"
+    text = f"Select a Provider\n{header}"
     return text, {"inline_keyboard": rows}
 
 
@@ -1057,26 +1055,25 @@ def _grouped_model_picker_payload(
     key, indices = groups[page]
     label_name = _vendor_label(key)
 
+    entries = sorted(
+        ((models[index].rsplit("/", 1)[-1].casefold(), index) for index in indices),
+        key=lambda item: (item[0], item[1]),
+    )
     buttons = []
-    for index in indices:
+    for _, index in entries:
         model = models[index]
-        # Dalam satu rute prefix-nya sama, jadi nama model saja sudah jelas.
+        # Dalam satu provider/rute prefix-nya sama, jadi nama model saja sudah jelas.
         label = model.rsplit("/", 1)[-1]
         if model == current_model:
             label = f"✓ {label}"
         buttons.append({"text": label[:60], "callback_data": f"model:{provider_index}:{index}"})
-    per_row = 2 if all(len(button["text"]) <= 22 for button in buttons) else 1
-    rows = [buttons[index:index + per_row] for index in range(0, len(buttons), per_row)]
-    rows.append([{"text": "« Routes", "callback_data": f"routes:{provider_index}"}])
+    rows = [[button] for button in buttons]
+    rows.append([{"text": "« Providers", "callback_data": f"routes:{provider_index}"}])
     rows.append([{"text": "« Back", "callback_data": "provider:back"}])
     rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
 
     header = f"{provider_name} › {label_name}" if provider_name else label_name
-    text = (
-        f"Select a model\n"
-        f"{header} • {len(indices)} models\n"
-        f"Current: {current_model or 'unknown'}"
-    )
+    text = f"Select a model\n{header} • {len(indices)} models"
     return text, {"inline_keyboard": rows}
 
 
@@ -1112,15 +1109,24 @@ def _active_provider_slug(providers: list[dict[str, str]]) -> str:
 
 
 def _provider_picker_payload(providers: list[dict[str, str]], current_slug: str) -> tuple[str, dict[str, Any]]:
+    indexed = sorted(
+        enumerate(providers),
+        key=lambda item: (str(item[1].get("name") or item[1]["slug"]).casefold(), item[0]),
+    )
     buttons = []
-    for index, provider in enumerate(providers):
+    for index, provider in indexed:
         label = provider.get("name") or provider["slug"]
         if provider["slug"] == current_slug:
             label = f"✓ {label}"
         buttons.append({"text": label[:48], "callback_data": f"provider:{index}"})
-    rows = [buttons[index:index + 2] for index in range(0, len(buttons), 2)]
+    rows = [[button] for button in buttons]
     rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
-    return "Select a provider", {"inline_keyboard": rows}
+    current_model = next(
+        (provider.get("model", "") for provider in providers if provider["slug"] == current_slug),
+        "",
+    )
+    text = f"Current: {current_model or 'unknown'}\nSelect a router/provider"
+    return text, {"inline_keyboard": rows}
 
 
 def _fetch_models_catalog(base_url: str, api_key: str, *, timeout: int = 12) -> tuple[list[str], dict[str, dict[str, Any]]]:
