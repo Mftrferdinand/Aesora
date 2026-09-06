@@ -244,10 +244,10 @@ def _yes_no(prompt: str, default: bool = False) -> bool:
 
 
 GATEWAY_OPTIONS = (
-    ("telegram", "Telegram", "\U0001f4ac"),   # 💬
-    ("whatsapp", "WhatsApp", "\U0001f7e2"),    # 🟢
-    ("webhook", "Webhook", "\U0001f517"),      # 🔗
-    ("cancel", "Cancel", "\u274c"),            # ❌
+    ("telegram", "Telegram"),
+    ("whatsapp", "WhatsApp"),
+    ("webhook", "Webhook"),
+    ("cancel", "Cancel"),
 )
 
 
@@ -255,17 +255,17 @@ def _read_menu_key() -> str:
     return read_menu_key()
 
 
-def _gateway_label(label: str, icon: str) -> str:
-    """'<emoji> Telegram' on a capable terminal, plain 'Telegram' on legacy."""
-    return f"{branding.emoji(icon)}{label}"
+def _gateway_label(label: str) -> str:
+    """'[•] Telegram' on a capable terminal, '[*] Telegram' on legacy."""
+    return f"{branding.marker()} {label}"
 
 
 def _select_gateway() -> str:
     """Arrow-key gateway picker with numeric fallback for redirected stdin."""
     if not sys.stdin.isatty():
         print("Select gateway:")
-        for index, (_value, label, icon) in enumerate(GATEWAY_OPTIONS, 1):
-            print(f"  {index}. {_gateway_label(label, icon)}")
+        for index, (_value, label) in enumerate(GATEWAY_OPTIONS, 1):
+            print(f"  {index}. {_gateway_label(label)}")
         while True:
             answer = input(f"Choice [1-{len(GATEWAY_OPTIONS)}]: ").strip()
             if answer.isdigit() and 1 <= int(answer) <= len(GATEWAY_OPTIONS):
@@ -278,9 +278,9 @@ def _select_gateway() -> str:
     with raw_mode():
         try:
             while True:
-                for index, (_value, label, icon) in enumerate(GATEWAY_OPTIONS):
+                for index, (_value, label) in enumerate(GATEWAY_OPTIONS):
                     marker = _paint(chevron, COLOR_BLUE) if index == selected else " "
-                    print(f"\r\033[K  {marker} {_gateway_label(label, icon)}")
+                    print(f"\r\033[K  {marker} {_gateway_label(label)}")
                 key = _read_menu_key()
                 if key == "up":
                     selected = (selected - 1) % len(GATEWAY_OPTIONS)
@@ -549,20 +549,14 @@ def cmd_setup_center() -> int:
     """Reconfigurable setup center; first-run onboarding remains `cmd_setup`."""
     _print_banner()
     print(f"==> SETUP CENTER  ·  {config.CONFIG_FILE}")
-    # Emoji prefixes render on capable terminals and vanish (no mojibake) on a
-    # legacy console via branding.emoji().
-    sections = [
-        ("\U0001f6f0\ufe0f", "Gateway"),   # 🛰️
-        ("\U0001f9e0", "Model"),           # 🧠
-        ("\U0001f6e0\ufe0f", "Tools"),      # 🛠️
-        ("\U0001f50c", "Integrations"),    # 🔌
-        ("\U0001f9ec", "Agent"),           # 🧬
-        ("\u2705", "Done"),                # ✅
-    ]
+    # A '[•]' bullet prefixes each section, degrading to '[*]' on a console that
+    # cannot encode the bullet (via branding.marker()).
+    bullet = branding.marker()
+    sections = ["Gateway", "Model", "Tools", "Integrations", "Agent", "Done"]
     while True:
         choice = _arrow_menu(
             "Configure:",
-            [f"{branding.emoji(icon)}{label}" for icon, label in sections],
+            [f"{bullet} {label}" for label in sections],
         )
         if choice in {-1, 5}:
             print("Setup center done. Run `zeline doctor` to verify everything.")

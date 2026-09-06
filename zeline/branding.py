@@ -61,23 +61,22 @@ def prompt_glyph(unicode_ok: bool | None = None) -> str:
     return "\u276f" if unicode_ok else ">"
 
 
-def emoji(symbol: str, *, unicode_ok: bool | None = None) -> str:
-    """Return the emoji plus a trailing space, or '' on a legacy console.
+def marker(*, unicode_ok: bool | None = None) -> str:
+    """Menu bullet '[•]', degrading to '[*]' on a console that can't encode •.
 
-    Menu labels read '<emoji> Gateway' on a capable terminal and just 'Gateway'
-    on a stream that cannot encode the glyph — never a mojibake box. Uses the
-    astral-plane encode test rather than the BMP block test, because a console
-    can support box-drawing yet still not encode a 4-byte emoji.
+    Tests the bullet itself rather than the full-block glyph: U+2022 lives in
+    cp1252, so a legacy Windows console still shows '[•]', and only a truly
+    limited encoding falls back to the ASCII '[*]'. Either way the label after
+    it stays meaningful — never a mojibake box.
     """
     if unicode_ok is None:
-        stream = sys.stdout
-        encoding = getattr(stream, "encoding", None) or "utf-8"
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
         try:
-            symbol.encode(encoding)
+            "\u2022".encode(encoding)
             unicode_ok = True
         except (LookupError, UnicodeEncodeError):
             unicode_ok = False
-    return f"{symbol} " if unicode_ok else ""
+    return "[\u2022]" if unicode_ok else "[*]"
 
 
 def rule(width: int | None = None, *, unicode_ok: bool | None = None) -> str:
