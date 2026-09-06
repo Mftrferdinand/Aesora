@@ -36,6 +36,21 @@ curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/r
 
 Then `zeline setup`.
 
+### npm (Node.js ≥ 18)
+
+If you already use npm, the wrapper does the same verified wheel install on
+first run — no `curl` or `iwr` needed:
+
+```sh
+npm install -g zeline
+zeline setup
+```
+
+The wrapper detects Python 3.10+ on your `PATH`, downloads the same versioned
+wheel and `SHA256SUMS` from the GitHub release, verifies the checksum, and
+installs into the same private runtime (`~/.local/share/zeline`). The `curl`
+and `iwr` routes below stay available for machines without Node.js.
+
 ### Why not `pip install zeline` yet
 
 The release workflow publishes to PyPI through Trusted Publishing (OIDC), with no

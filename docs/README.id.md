@@ -76,6 +76,21 @@ iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v
 
 Lalu `zeline setup`.
 
+### npm (Node.js ≥ 18)
+
+Jika kamu sudah pakai npm, wrapper ini melakukan instalasi wheel terverifikasi
+yang sama saat jalankan pertama kali — tidak perlu `curl` atau `iwr`:
+
+```sh
+npm install -g zeline
+zeline setup
+```
+
+Wrapper mendeteksi Python 3.10+ di `PATH` kamu, mengunduh wheel dan
+`SHA256SUMS` versi yang sama dari rilis GitHub, memverifikasi checksum, dan
+memasang ke runtime privat yang sama (`~/.local/share/zeline`). Rute `curl`
+dan `iwr` di atas tetap tersedia untuk mesin tanpa Node.js.
+
 ### Verifikasi mandiri (opsional)
 
 Pemeriksaan wheel oleh installer berasal dari rilis yang sama dengan installer
