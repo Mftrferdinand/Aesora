@@ -7,7 +7,7 @@
    ███╔╝  ██╔══╝  ██║     ██║██║╚██╗██║██╔══╝
   ███████╗███████╗███████╗██║██║ ╚████║███████╗
   ╚══════╝╚══════╝╚══════╝╚═╝╚═╝  ╚═══╝╚══════╝
-  AGENTIC AI BY ZEROLINEAR • v0.3.1
+  AGENTIC AI BY ZEROLINEAR • v0.3.2
 ```
 
 On Termux, Linux, macOS, and iSH, Zeline installs into a **private Python
@@ -31,34 +31,10 @@ WhatsApp also needs Node.js 18+ and npm.
 One line on every POSIX platform — Termux, Linux, macOS, and iSH:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 ```
 
 Then `zeline setup`.
-
-### npm (Node.js ≥ 18)
-
-If you already use npm, the wrapper does the same verified wheel install on
-first run — no `curl` or `iwr` needed:
-
-```sh
-npm install -g zeline
-zeline setup
-```
-
-The wrapper detects Python 3.10+ on your `PATH`, downloads the same versioned
-wheel and `SHA256SUMS` from the GitHub release, verifies the checksum, and
-installs into the same private runtime (`~/.local/share/zeline`). The `curl`
-and `iwr` routes below stay available for machines without Node.js.
-
-On Windows, the wrapper prefers `py -3` and rejects the Microsoft Store
-`python.exe` stub — the same guard `install.ps1` uses — so a machine without
-real Python gets a clear error instead of a Store popup. See
-[`README.npm.md`](../README.npm.md) for environment variables (`ZELINE_PYTHON`,
-`ZELINE_INSTALL_ROOT`).
-
-For independent build-provenance verification (signed by GitHub, not served
-alongside the file), see [the attestation step below](#why-there-is-no-checksum-step-to-copy).
 
 ### PyPI (`pip` / `uv`)
 
@@ -105,7 +81,7 @@ Install Termux from F-Droid or GitHub (the Play Store build is obsolete), then:
 ```bash
 pkg update -y
 pkg install python curl -y
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -123,7 +99,7 @@ Debian / Ubuntu:
 ```bash
 sudo apt update
 sudo apt install python3 python3-venv curl -y
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -131,7 +107,7 @@ Fedora:
 
 ```bash
 sudo dnf install python3 curl -y
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -139,7 +115,7 @@ Arch Linux:
 
 ```bash
 sudo pacman -S --needed python curl
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -152,7 +128,7 @@ Install Apple command-line tools and Homebrew Python if needed:
 ```bash
 xcode-select --install
 brew install python
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -168,7 +144,7 @@ Use [iSH](https://ish.app/), an Alpine Linux shell for iOS/iPadOS:
 ```sh
 apk update
 apk add bash curl python3 py3-pip
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.sh && bash install.sh
 zeline setup
 ```
 
@@ -183,7 +159,7 @@ Open **PowerShell** or **Windows Terminal**, not Command Prompt. Administrator
 rights are not required:
 
 ```powershell
-iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.ps1 -OutFile install.ps1; .\install.ps1
+iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.2/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 Then `zeline setup`. `install.ps1` verifies the versioned wheel with
@@ -198,6 +174,38 @@ alias stub.
 If `zeline` is not recognized immediately, open a new terminal. The installer
 also prints the exact selected-interpreter command (for example `python -m
 zeline.cli` or `py -3 -m zeline.cli`) when it leaves PATH unchanged.
+
+## Troubleshooting: Windows Defender or antivirus flags the install
+
+If Windows Defender, Bitdefender, or another antivirus quarantines the Zeline
+wheel or the installer's private runtime, this is a **false positive**. ML-based
+antivirus engines commonly flag unsigned Python executables and freshly-created
+directories that download packages.
+
+Zeline's wheel is published to PyPI through Trusted Publishing (OIDC) with
+build provenance attested by GitHub. The installer verifies every download
+against `SHA256SUMS` from the same release before installing.
+
+**To whitelist Zeline on Windows:**
+
+```powershell
+# Run PowerShell as Administrator
+Add-MpPreference -ExclusionPath "$env:LOCALAPPDATA\zeline"
+# If you installed via install.ps1, also exclude the installer root:
+Add-MpPreference -ExclusionPath "$env:USERPROFILE\.local\share\zeline"
+```
+
+- **Windows Defender:** Run the command above, or add the folder manually via
+  *Settings → Privacy & security → Windows Security → Virus & threat
+  protection → Manage settings → Exclusions → Add an exclusion*.
+- **Bitdefender:** Add an exception in the Bitdefender console (*Protection →
+  Antivirus → Settings → Manage Exceptions*).
+- **Other antivirus:** Whitelist the **folder**, not the file hash — Zeline
+  updates itself, so the hash changes every version.
+
+For more context on why unsigned Python packages trigger these alerts, see
+[PEP 458](https://peps.python.org/pep-0458/) and the
+[PyPI security policy](https://docs.pypi.org/security/).
 
 ## Install from a checkout
 
