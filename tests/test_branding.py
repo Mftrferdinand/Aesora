@@ -105,12 +105,12 @@ class BrandingTests(unittest.TestCase):
         self.assertNotIn("\u2500", branding.rule(width=20, unicode_ok=False))
         self.assertIn("-", branding.rule(width=20, unicode_ok=False))
 
-    def test_emoji_prefix_present_when_capable_and_stripped_on_legacy(self):
-        # Capable terminal → '🛰️ ' prefix with a trailing space before the label.
-        self.assertEqual(branding.emoji("\U0001f6f0\ufe0f", unicode_ok=True), "\U0001f6f0\ufe0f ")
-        # Legacy console cannot encode the astral emoji → empty prefix, never a
-        # mojibake box. The label alone still reads cleanly.
-        self.assertEqual(branding.emoji("\U0001f6f0\ufe0f", unicode_ok=False), "")
+    def test_marker_bullet_present_when_capable_and_ascii_on_legacy(self):
+        # Capable terminal → '[•]' bullet prefix for menu rows.
+        self.assertEqual(branding.marker(unicode_ok=True), "[\u2022]")
+        # A stream that cannot encode the bullet → ASCII '[*]', never a mojibake
+        # box. The label after it stays meaningful either way.
+        self.assertEqual(branding.marker(unicode_ok=False), "[*]")
 
     def test_color_forced_on_with_force_color(self):
         with mock.patch.dict(os.environ, {"FORCE_COLOR": "1"}, clear=False):
