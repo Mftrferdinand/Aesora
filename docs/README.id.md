@@ -52,13 +52,24 @@ Jalankan secara lokal untuk pengembangan atau deploy ke server maupun cloud Anda
 Di platform POSIX, Zeline memakai environment Python privat; di Windows paket
 dipasang hanya untuk akun pengguna. Tidak perlu root atau Administrator.
 
+### PyPI (direkomendasikan)
+
+```sh
+pip install zeline
+# atau, di environment tool terisolasi:
+uv tool install zeline
+```
+
+Lalu `zeline setup`. Zeline ada di PyPI lewat Trusted Publishing (OIDC) —
+tanpa API token di repo, artifact terverifikasi yang sama dengan rilis.
+
 ### Termux, Linux, macOS, dan iSH
 
 Satu baris, dan tidak butuh Python tooling apa pun — dia menyiapkan environment
 privat untukmu:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.sh && bash install.sh
 ```
 
 Lalu `zeline setup`. Installer-nya mengunduh wheel bertag dan memverifikasinya
@@ -71,7 +82,7 @@ gateway saat iSH tidak berada di foreground.
 ### Windows PowerShell
 
 ```powershell
-iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.0/install.ps1 -OutFile install.ps1; .\install.ps1
+iwr -UseBasicParsing https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.1/install.ps1 -OutFile install.ps1; .\install.ps1
 ```
 
 Lalu `zeline setup`.

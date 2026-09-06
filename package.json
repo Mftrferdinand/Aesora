@@ -1,6 +1,6 @@
 {
   "name": "zeline",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "npm installer wrapper for the Zeline Python agentic AI framework.",
   "license": "MIT",
   "repository": {

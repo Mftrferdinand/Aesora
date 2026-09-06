@@ -10,6 +10,19 @@ release's documented one-liner keeps working after a newer release ships.
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-09-06
+
+### Added
+
+- Zeline is now on PyPI via Trusted Publishing (OIDC). `pip install zeline`
+  and `uv tool install zeline` are now supported install routes on every
+  platform, documented across the README, installation guide, and both
+  localized readmes. The release workflow's `publish-pypi` job uploads the
+  same verified wheel and sdist that passed the release gate — no API token
+  stored in the repository. `PYPI_PUBLISHED` flipped to `True` in
+  `test_community_docs.py`, which now *requires* the PyPI route to be
+  documented (previously it forbade it).
+
 ## [0.3.0] — 2026-09-06
 
 ### Added
@@ -268,7 +281,8 @@ release's documented one-liner keeps working after a newer release ships.
 Release notes for 0.2.5 and earlier are on the
 [releases page](https://github.com/Mftrferdinand/Zeline/releases).
 
-[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.0...main
+[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.1...main
+[0.3.1]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.1
 [0.3.0]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.0
 [0.2.9]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.9
 [0.2.8]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.8

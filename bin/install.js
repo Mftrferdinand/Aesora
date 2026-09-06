@@ -20,8 +20,8 @@ const path = require("path");
 const os = require("os");
 
 // --- Pinned release metadata (mirrors install.sh VERSION/REF) --------------
-const VERSION = "0.3.0";
-const REF = "v0.3.0";
+const VERSION = "0.3.1";
+const REF = "v0.3.1";
 const REPO = "Mftrferdinand/Zeline";
 const RELEASE_BASE = `https://github.com/${REPO}/releases/download/${REF}`;
 const WHEEL_NAME = `zeline-${VERSION}-py3-none-any.whl`;
