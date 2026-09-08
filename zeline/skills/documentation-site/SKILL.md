@@ -384,7 +384,7 @@ Bullet points are NOT content. A page that says "Zero-shot: berikan instruksi ta
 3. **Never fabricate config structures.** Real `config.yaml` keys, real env var names, real file paths. Check the skill/docs source.
 4. **Never make up provider tables, model lists, or feature lists.** Pull from the real source.
 5. **If a skill exists for the product, USE IT.** The zeline skill has the full CLI reference, config sections, provider list, toolsets, and key paths. This IS the source of truth.
-6. **Link to official docs** (e.g. `zeline.nousresearch.com/docs`) so the user can verify.
+6. **Link to official docs** (e.g. `zeline.zerolinear.com/docs`) so the user can verify.
 
 **Symptom of violation:** User says "tanpa sumber" or "kenapa ga langsung dari [product] install nya?" — you fabricated content instead of pulling from the real source.
 
