@@ -115,6 +115,98 @@ _VENDOR_LABELS = {
     "bai": "B.ai",
 }
 
+# ── Tile provider biru dengan logo ───────────────────────────────────────────
+# Bot API menampilkan custom emoji sebagai logo di kiri tombol. ID logo dibaca
+# dari config gateway dan dari ~/.zeline/provider_logos_map.json (map yang dibuat
+# saat setup logo bot). Tidak ada fallback badge huruf: bila prefix rute belum
+# dikenal, ia memakai logo router sebagai logo rute generik.
+_PROVIDER_BRANDS: tuple[tuple[str, frozenset, tuple], ...] = (
+    ("9router", frozenset({"9router", "ninerouter", "9r"}), ("9router", "9 router", "nine router")),
+    ("codebuddy", frozenset({"cb", "cbai", "codebuddy"}), ("codebuddy",)),
+    ("codex", frozenset({"cx", "codex"}), ("codex",)),
+    ("antigravity", frozenset({"ag", "antigravity"}), ("antigravity",)),
+    ("openai", frozenset({"openai"}), ("openai", "chatgpt")),
+    ("anthropic", frozenset({"anthropic", "claude"}), ("anthropic", "claude")),
+    ("google", frozenset({"google", "gemini", "goog"}), ("google", "gemini")),
+    ("nvidia", frozenset({"nvidia", "nim"}), ("nvidia",)),
+    ("openrouter", frozenset({"openrouter"}), ("openrouter",)),
+    ("tabi", frozenset({"tabi", "tabitoken"}), ("tabi",)),
+    ("gorouter", frozenset({"gr", "gorouter"}), ("gorouter", "go router", "go-router")),
+)
+
+# brand → icon_custom_emoji_id. Kosong = tile pakai badge huruf saja.
+_PROVIDER_CUSTOM_EMOJI: dict[str, str] = {}
+
+
+def _provider_brand(key: str, label: str) -> str:
+    slug = (key or "").casefold()
+    text = (label or "").casefold()
+    for brand, slugs, words in _PROVIDER_BRANDS:
+        if slug and slug in slugs:
+            return brand
+        if any(word in text for word in words):
+            return brand
+    return ""
+
+
+def _model_button_logos() -> dict[str, str]:
+    """Override logo dari config (gateways.telegram.model_button_logos)."""
+    cfg = config.stored_config_copy()
+    raw = ((cfg.get("gateways") or {}).get("telegram") or {}).get("model_button_logos") or {}
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k).casefold(): str(v) for k, v in raw.items() if v}
+
+
+def _provider_identity(key: str, label: str, logos: dict[str, str] | None = None) -> tuple[str, str]:
+    """(badge, icon_custom_emoji_id|"") untuk satu tile provider.
+
+    Badge = karakter alfanumerik pertama dari nama tampilan (dikapital bila
+    ASCII), jadi provider asing mana pun tetap tampil rapi tanpa edit kode.
+    Logo custom-emoji dipakai bila brand-nya sudah dipetakan ke sebuah ID.
+    """
+    text = (label or key or "").strip()
+    badge = next((ch for ch in text if ch.isalnum()), "?")
+    if badge.isascii() and badge.isalpha():
+        badge = badge.upper()
+    brand = _provider_brand(key, label)
+    emoji = ({**_PROVIDER_CUSTOM_EMOJI, **(logos or {})}.get(brand, "") if brand else "")
+    return badge, emoji
+
+
+def _provider_tile_button(
+    key: str,
+    label: str,
+    callback: str,
+    *,
+    current: bool = False,
+    count: int = 0,
+    logos: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Satu tombol tile provider: biru native + nama (+ jumlah) (+ ✓ aktif).
+
+    Tidak ada lagi badge huruf — logo custom-emoji hanya dipakai bila brand
+    terpetakan ke ID (entitlement Premium/Fragment di sisi client).
+    """
+    _badge, emoji = _provider_identity(key, label, logos)
+    suffix = f" ({count})" if count > 0 else ""
+    text = f"{'✓ ' if current else ''}{label}{suffix}"
+    button: dict[str, Any] = {"text": text[:60], "callback_data": callback, "style": "primary"}
+    if emoji:
+        button["icon_custom_emoji_id"] = emoji
+    return button
+
+
+def _nav_back_button(callback: str, label: str = "« Back") -> dict[str, Any]:
+    # Telegram hanya punya primary/success/danger — tidak ada hitam. Tanpa
+    # `style`, client memakai warna netral bawaan (paling dekat hitam/abu).
+    return {"text": label, "callback_data": callback}
+
+
+def _nav_cancel_button() -> dict[str, Any]:
+    # Netral (tanpa style) seperti Back — hanya opsi/provider/model yang biru.
+    return {"text": "✗ Cancel", "callback_data": "model:cancel"}
+
 
 def _telegram_commands() -> list[dict[str, str]]:
     """Menu command ringkas seperti surface Telegram Zeline."""
@@ -1003,11 +1095,11 @@ def _model_picker_payload(
         if model == current_model:
             label = f"✓ {label}"
         callback = f"model:{index}" if provider_index is None else f"model:{provider_index}:{index}"
-        buttons.append({"text": label[:60], "callback_data": callback})
+        buttons.append({"text": label[:60], "callback_data": callback, "style": "primary"})
     rows = [[button] for button in buttons]
     if provider_index is not None:
-        rows.append([{"text": "« Back", "callback_data": "provider:back"}])
-    rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
+        rows.append([_nav_back_button("provider:back")])
+    rows.append([_nav_cancel_button()])
     text = f"Select a model\n{provider_name} • {len(models)} models" if provider_name else "Select a model"
     return text, {"inline_keyboard": rows}
 
@@ -1027,16 +1119,19 @@ def _route_picker_payload(
         enumerate(groups),
         key=lambda item: (_vendor_label(item[1][0]).casefold(), item[0]),
     )
+    logos = _model_button_logos()
     buttons = []
     for group_index, (key, indices) in indexed_groups:
         label = _vendor_label(key)
         # Tandai provider/rute yang memuat model aktif tanpa memengaruhi urutan.
-        if current_model and current_model.split("/", 1)[0] == key:
-            label = f"✓ {label}"
-        buttons.append({"text": label[:60], "callback_data": f"route:{provider_index}:{group_index}"})
+        current = bool(current_model and current_model.split("/", 1)[0] == key)
+        buttons.append(_provider_tile_button(
+            key, label, f"route:{provider_index}:{group_index}",
+            current=current, count=len(indices), logos=logos,
+        ))
     rows = [[button] for button in buttons]
-    rows.append([{"text": "« Back", "callback_data": "provider:back"}])
-    rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
+    rows.append([_nav_back_button("provider:back")])
+    rows.append([_nav_cancel_button()])
     header = f"{provider_name} › {len(groups)} provider" if provider_name else f"{len(groups)} provider"
     text = f"Select a Provider\n{header}"
     return text, {"inline_keyboard": rows}
@@ -1066,11 +1161,11 @@ def _grouped_model_picker_payload(
         label = model.rsplit("/", 1)[-1]
         if model == current_model:
             label = f"✓ {label}"
-        buttons.append({"text": label[:60], "callback_data": f"model:{provider_index}:{index}"})
+        buttons.append({"text": label[:60], "callback_data": f"model:{provider_index}:{index}", "style": "primary"})
     rows = [[button] for button in buttons]
-    rows.append([{"text": "« Providers", "callback_data": f"routes:{provider_index}"}])
-    rows.append([{"text": "« Back", "callback_data": "provider:back"}])
-    rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
+    rows.append([_nav_back_button(f"routes:{provider_index}", "« Providers")])
+    rows.append([_nav_back_button("provider:back")])
+    rows.append([_nav_cancel_button()])
 
     header = f"{provider_name} › {label_name}" if provider_name else label_name
     text = f"Select a model\n{header} • {len(indices)} models"
@@ -1113,14 +1208,24 @@ def _provider_picker_payload(providers: list[dict[str, str]], current_slug: str)
         enumerate(providers),
         key=lambda item: (str(item[1].get("name") or item[1]["slug"]).casefold(), item[0]),
     )
+    logos = _model_button_logos()
     buttons = []
     for index, provider in indexed:
         label = provider.get("name") or provider["slug"]
-        if provider["slug"] == current_slug:
-            label = f"✓ {label}"
-        buttons.append({"text": label[:48], "callback_data": f"provider:{index}"})
+        # Jumlah rute/provider di dalam provider ini (mis. 9Router (6)).
+        route_count = 0
+        try:
+            models = _discover_provider_models(provider)
+            groups = _model_vendor_groups(models)
+            route_count = len(groups) if len(groups) > 1 else (1 if models else 0)
+        except Exception:
+            route_count = 0
+        buttons.append(_provider_tile_button(
+            provider["slug"], label, f"provider:{index}",
+            current=provider["slug"] == current_slug, count=route_count, logos=logos,
+        ))
     rows = [[button] for button in buttons]
-    rows.append([{"text": "✗ Cancel", "callback_data": "model:cancel"}])
+    rows.append([_nav_cancel_button()])
     current_model = next(
         (provider.get("model", "") for provider in providers if provider["slug"] == current_slug),
         "",
