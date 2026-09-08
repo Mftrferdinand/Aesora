@@ -379,11 +379,11 @@ Bullet points are NOT content. A page that says "Zero-shot: berikan instruksi ta
 **CRITICAL lesson (2026-07-13):** User caught fabricated documentation content — invented CLI commands (`npm install -g zeline`), made-up config structures, and fake API patterns that don't exist in the real product. User said: "kenapa kamu output nya tanpa sumber? kenapa ga langsung dari zeline guide install nya?" and "buat output Resmi dr zeline".
 
 **Rule:** When building a documentation site for a real product (Zeline, any framework, any tool):
-1. **Load the product's skill first** (`skill_view(name='zeline')` or equivalent) to get REAL commands, config paths, and API patterns.
+1. **Load the product's available skill first** (discover its exact name with the skill listing tool) to get REAL commands, config paths, and API patterns. Do not assume a skill named `zeline` exists.
 2. **Never invent CLI commands.** If you don't know the exact install command, look it up — don't guess `npm install -g X` when the real installer is `curl -fsSL https://.../install.sh | bash`.
 3. **Never fabricate config structures.** Real `config.yaml` keys, real env var names, real file paths. Check the skill/docs source.
 4. **Never make up provider tables, model lists, or feature lists.** Pull from the real source.
-5. **If a skill exists for the product, USE IT.** The zeline skill has the full CLI reference, config sections, provider list, toolsets, and key paths. This IS the source of truth.
+5. **If a skill exists for the product, USE IT.** Cross-check commands and paths against the current repository and official documentation; copied skill text is not proof of an API.
 6. **Link to official docs** (e.g. `zeline.zerolinear.com/docs`) so the user can verify.
 
 **Symptom of violation:** User says "tanpa sumber" or "kenapa ga langsung dari [product] install nya?" — you fabricated content instead of pulling from the real source.
@@ -514,9 +514,9 @@ btn.addEventListener('click', () => {
 ```
 Then:
 ```
-patch(old_string='<!--CONTENT_PLACEHOLDER-->', new_string='<section>...</section><!--CONTENT_PLACEHOLDER-->')
+patch_file(path='site/index.html', old_text='<!--CONTENT_PLACEHOLDER-->', new_text='<section>...</section><!--CONTENT_PLACEHOLDER-->')
 ```
-Each patch call must be under ~8K tokens. Use `execute_code` to batch multiple `patch()` calls when adding many sections — this is faster than individual patch calls and handles the sequential dependency naturally.
+Keep each patch small and targeted. Zeline's `execute_code` runs ordinary Python: it cannot call `patch()` or import a tool bridge. Use the exposed `patch_file` tool directly, or write a standalone generation script using pathlib and execute it with Python.
 
 ## Footer Deduplication
 
@@ -585,7 +585,7 @@ Pages under 2000 chars = shallow. Zero tolerance — if ANY page is shallow, the
 10. **Post-generation slang cleaning required.** Even if `clean_slang()` runs during markdown loading, section scripts that import generate_v5/v7 regenerate pages from raw content, re-introducing slang. **Always run `clean_all_slang.py` as a POST-PROCESS step** on all generated HTML files AFTER all generate scripts complete. The correct pipeline order is:
 ```
 1. python3 generate_v7.py        # Home + soul-guide sections
-2. python3 section_*.py           # Deep content sections (agents, llm, prompt, automation, api, coding, zeline)
+2. for script in section_*.py; do [ -f "$script" ] || continue; python3 "$script" || exit; done           # Deep content sections (agents, llm, prompt, automation, api, coding, zeline)
 3. python3 clean_all_slang.py    # Post-process: clean ALL HTML files
 4. Verify: char count per page + slang scan
 ```
@@ -602,7 +602,7 @@ This fix runs AFTER `clean_all_slang.py` and `fix_all_issues.py` as a separate p
 
 ```
 1. python3 generate_v8.py              # Home + soul-guide sections
-2. python3 section_*.py                # Deep content sections
+2. for script in section_*.py; do [ -f "$script" ] || continue; python3 "$script" || exit; done                # Deep content sections
 3. python3 clean_all_slang.py          # Clean slang from ALL HTML files
 4. python3 fix_all_issues.py           # Fix double-escaped entities, "Copy" leaks, raw backticks
 5. python3 fix_tables.py               # Fix pipe-delimited text → proper HTML tables

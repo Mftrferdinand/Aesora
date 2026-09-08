@@ -1212,14 +1212,14 @@ def _provider_picker_payload(providers: list[dict[str, str]], current_slug: str)
     buttons = []
     for index, provider in indexed:
         label = provider.get("name") or provider["slug"]
-        # Jumlah rute/provider di dalam provider ini (mis. 9Router (6)).
-        route_count = 0
-        try:
-            models = _discover_provider_models(provider)
-            groups = _model_vendor_groups(models)
-            route_count = len(groups) if len(groups) > 1 else (1 if models else 0)
-        except Exception:
-            route_count = 0
+        # Root/back navigation must never wait on every provider's network.
+        # Counts are cosmetic: reuse even stale catalog IDs, and discover live
+        # models only when the user opens that provider.
+        base = str(provider.get("base_url") or "").rstrip("/")
+        cached = _MODELS_CACHE.get(base)
+        models = cached[1] if cached else []
+        groups = _model_vendor_groups(models)
+        route_count = len(groups) if len(groups) > 1 else (1 if models else 0)
         buttons.append(_provider_tile_button(
             provider["slug"], label, f"provider:{index}",
             current=provider["slug"] == current_slug, count=route_count, logos=logos,
@@ -2096,6 +2096,19 @@ def _handle_callback(api: str, callback: dict[str, Any], sessions) -> None:
     if data == "provider:back":
         picker_text, markup = _provider_picker_payload(providers, _active_provider_slug(providers))
         _edit_interactive(api, chat_id, message_id, picker_text, reply_markup=markup)
+        return
+    # Validate the complete payload before Python indexing or live discovery.
+    # Negative indices select the last item, and extra fields must not fall
+    # through to the legacy model callback format.
+    kind = data.split(":", 1)[0]
+    patterns = {
+        "provider": r"provider:[0-9]+",
+        "routes": r"routes:[0-9]+",
+        "route": r"route:[0-9]+:[0-9]+",
+        "model": r"model:[0-9]+(?::[0-9]+)?",
+    }
+    if kind in patterns and not re.fullmatch(patterns[kind], data):
+        _edit_interactive(api, chat_id, message_id, "Model selection expired. Run /model again.")
         return
     if data.startswith("routes:"):
         # Kembali ke daftar rute milik satu provider (router seperti 9Router).

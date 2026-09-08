@@ -39,9 +39,18 @@ Ask the brand name if not given. Ask the accent color (offer 3-4 concrete choice
 Do the whole rebrand in one `execute_code` pass, then verify zero leftovers. Cover code, config, manifest, SEO meta, sitemap, robots, `.firebaserc`, package name, domains, social handles, and asset filenames.
 
 ```python
-from zeline_tools import terminal
-ROOT="/data/data/com.termux/files/home/NEWNAME"
-files = terminal(f'grep -rilE "oldbrand" {ROOT} --include="*.jsx" --include="*.js" --include="*.json" --include="*.html" --include="*.css" 2>/dev/null').output.split()
+from pathlib import Path
+ROOT = Path(Path.home() / "NEWNAME").resolve(strict=True)
+# execute_code runs ordinary Python, not an importable tool bridge.
+# Exclude generated trees, symlinks and lockfiles; filenames may contain spaces.
+excluded = {'.git', 'node_modules', 'dist', 'build', '.venv'}
+files = [p for p in ROOT.rglob('*')
+         if p.is_file() and not p.is_symlink()
+         and not excluded.intersection(p.relative_to(ROOT).parts)
+         and p.resolve().is_relative_to(ROOT)
+         and (p.suffix in {'.jsx', '.tsx', '.ts', '.js', '.json', '.html', '.css', '.xml', '.txt'}
+              or p.name == '.firebaserc')
+         and p.name not in {'package-lock.json', 'npm-shrinkwrap.json'}]
 def rebrand(t):
     t=t.replace("www.oldbrand.app","newbrand.app").replace("oldbrand.app","newbrand.app")
     t=t.replace("@oldbrandapp","@newbrandapp")
@@ -52,7 +61,8 @@ for p in files:
     if new!=raw: open(p,"w",encoding="utf-8").write(new)
 # rename asset files too: oldbrand.svg → newbrand.svg, oldbrand2.png → ...
 # FINAL: grep must return nothing
-print(terminal(f'grep -rniE "oldbrand" {ROOT} --include="*.js*" --include="*.json" --include="*.html" --include="*.css" 2>/dev/null').output or "CLEAN")
+leftovers = [str(p.relative_to(ROOT)) for p in files if 'oldbrand' in p.read_text(encoding='utf-8').lower()]
+print(leftovers or "CLEAN (checked text files only; inspect asset filenames separately)")
 ```
 - **Case-sensitive replaces in specific→generic order** (`OldBrand` before `oldbrand`) so you don't double-process. A logo split across tags (`Old<span>Brand</span>`) needs its own regex.
 - **Second sweep for the stragglers**: `.firebaserc` project id, `public/robots.txt`, `public/sitemap.xml` — grep the WHOLE tree (not just `src/`) to catch them, then re-run the leftover grep until it's `CLEAN`.

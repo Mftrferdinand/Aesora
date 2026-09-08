@@ -41,8 +41,14 @@ class TripayPayment:
         }
 
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        r = requests.post(f"{self.base_url}/transaction/create", json=payload, headers=headers)
-        data = r.json()
+        try:
+            r = requests.post(f"{self.base_url}/transaction/create", json=payload, headers=headers, timeout=30)
+            r.raise_for_status()
+            data = r.json()
+        except (requests.RequestException, ValueError):
+            # A timeout may occur after creation. Never automatically retry a POST.
+            return {"success": False, "error": "Creation uncertain; reconcile merchant_ref before retry",
+                    "merchant_ref": merchant_ref}
 
         if data.get("success"):
             return {
@@ -51,7 +57,7 @@ class TripayPayment:
                 "merchant_ref": data["data"]["merchant_ref"],
                 "qr_url": data["data"]["qr_url"],
                 "qr_string": data["data"]["qr_string"],
-                "pay_url": data["data"]["pay_url"],
+                "pay_url": data["data"].get("pay_url") or data["data"].get("checkout_url"),
                 "amount": data["data"]["amount"],
                 "status": data["data"]["status"],
             }
@@ -60,15 +66,20 @@ class TripayPayment:
     def check_payment(self, reference):
         """Check payment status by Tripay reference."""
         headers = {"Authorization": f"Bearer {self.api_key}"}
-        r = requests.get(
-            f"{self.base_url}/transaction/detail?reference={reference}",
-            headers=headers
-        )
-        data = r.json()
+        try:
+            r = requests.get(
+                f"{self.base_url}/transaction/detail", params={"reference": reference},
+                headers=headers, timeout=30
+            )
+            r.raise_for_status()
+            data = r.json()
+        except (requests.RequestException, ValueError):
+            return {"success": False, "error": "Payment lookup failed; retry later"}
 
         if data.get("success"):
             return {
                 "success": True,
+                "reference": data["data"].get("reference"),
                 "status": data["data"]["status"],  # UNPAID, PAID, EXPIRED, FAILED
                 "amount": data["data"]["amount"],
                 "paid_at": data["data"].get("paid_at"),
@@ -76,14 +87,15 @@ class TripayPayment:
         return {"success": False, "error": data.get("message")}
 
     @staticmethod
-    def verify_callback(callback_data, private_key, merchant_code):
-        """Verify Tripay webhook callback signature. Returns True if valid."""
-        callback_dict = dict(callback_data)
-        signature = callback_dict.pop("signature", "")
-        payload = json.dumps(callback_dict, separators=(',', ':'))
-        expected = hmac.new(
-            private_key.encode(),
-            payload.encode(),
-            hashlib.sha256
-        ).hexdigest()
-        return signature == expected
+    def verify_callback(raw_body, signature, private_key):
+        """Authenticate exact HTTP bytes against X-Callback-Signature, before JSON parsing.
+
+        Authentication alone does not authorize delivery: match the stored reference,
+        amount and merchant_ref, require PAID, and deduplicate the order separately.
+        """
+        if not isinstance(raw_body, bytes) or not isinstance(signature, str):
+            return False
+        if not private_key or len(signature) != 64:
+            return False
+        expected = hmac.new(private_key.encode(), raw_body, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(signature.encode('utf-8'), expected.encode('ascii'))
