@@ -10,10 +10,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ─── CONFIG — Fill these in ───
-TOKEN =*** = 1234567890
-DB_PATH = os.path.expanduser("~/iniochobot/database.db")
+TOKEN = "YOUR_BOT_TOKEN"
+ADMIN_ID = 1234567890
+DB_PATH = os.path.expanduser("~/shopbot/database.db")
 
-TRIPAY_API_KEY="YOUR..._KEY = "YOUR_PRIVATE_KEY"
+TRIPAY_API_KEY = "YOUR_API_KEY"
+TRIPAY_PRIVATE_KEY = "YOUR_PRIVATE_KEY"
 TRIPAY_MERCHANT_CODE = "Txxxxx"
 
 # Import Tripay gateway
