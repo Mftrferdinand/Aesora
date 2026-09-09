@@ -432,9 +432,7 @@ def _refresh_known_bundled_revisions(source: Path) -> int:
             continue
         try:
             resolved = path.resolve(strict=False)
-            if not resolved.is_relative_to(public_root) or any(
-                parent.is_symlink() for parent in path.parents if parent != PUBLIC_SKILLS_DIR
-            ):
+            if not resolved.is_relative_to(public_root):
                 continue
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if digest in expected_digests:

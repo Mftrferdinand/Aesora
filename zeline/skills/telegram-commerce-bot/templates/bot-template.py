@@ -229,8 +229,10 @@ async def deliver_order(order_id, bot):
             'SELECT user_id, product, status, stock_id FROM orders WHERE id=?',
             (order_id,)).fetchone()
         if row and row[2] == 'done':
+            conn.rollback()
             return True
         if not row or row[2] not in ('paid', 'delivery_failed'):
+            conn.rollback()
             return False
         buyer_id, product, _, reserved_id = row
         if reserved_id is not None:

@@ -4,7 +4,7 @@ Uses only stdlib unittest because the release CI installs runtime dependencies,
 not pytest or the optional Telegram client package.
 """
 import asyncio
-from contextlib import redirect_stdout
+from contextlib import contextmanager, redirect_stdout
 from datetime import datetime, timezone
 import hashlib
 import io
@@ -27,12 +27,30 @@ ROOT = Path(__file__).resolve().parents[1]
 SKILLS = ROOT / "zeline" / "skills"
 
 
+class _FakeFilter:
+    def __and__(self, other):
+        return self
+
+    def __invert__(self):
+        return self
+
+
 def load(path: Path, name: str):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
     spec.loader.exec_module(module)
     return module
+
+
+@contextmanager
+def database(path):
+    connection = sqlite3.connect(path)
+    try:
+        yield connection
+        connection.commit()
+    finally:
+        connection.close()
 
 
 def _telegram_stubs() -> dict[str, ModuleType]:
@@ -45,14 +63,14 @@ def _telegram_stubs() -> dict[str, ModuleType]:
         setattr(ext, name, type(name, (), {}))
     context_types = type("ContextTypes", (), {"DEFAULT_TYPE": object})
     ext.ContextTypes = context_types
-    ext.filters = SimpleNamespace(TEXT=object(), COMMAND=object())
+    ext.filters = SimpleNamespace(TEXT=_FakeFilter(), COMMAND=_FakeFilter())
     return {"telegram": telegram, "telegram.ext": ext}
 
 
 class NewSkillTemplateTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(lambda: Path(self.temp.name).exists() and self.temp.cleanup())
         self.root = Path(self.temp.name)
         templates = SKILLS / "telegram-commerce-bot" / "templates"
         shutil.copy(templates / "tripay-gateway.py", self.root / "tripay_gateway.py")
@@ -66,7 +84,7 @@ class NewSkillTemplateTests(unittest.TestCase):
         self.shop = load(templates / "bot-template.py", "shop_template_audit")
         self.shop.DB_PATH = str(self.root / "nested" / "shop.db")
         self.shop.init_db()
-        with sqlite3.connect(self.shop.DB_PATH) as db:
+        with database(self.shop.DB_PATH) as db:
             db.execute("INSERT INTO orders (user_id,product,price,tripay_ref,payment_amount) "
                        "VALUES (42,'Product',100,'REF',100)")
             db.execute("INSERT INTO stock (product,credential) VALUES ('Product','secret')")
@@ -97,11 +115,11 @@ class NewSkillTemplateTests(unittest.TestCase):
         bot.send_message.assert_not_called()
 
     def test_failed_delivery_reserves_same_stock_for_retry(self):
-        with sqlite3.connect(self.shop.DB_PATH) as db:
+        with database(self.shop.DB_PATH) as db:
             db.execute("UPDATE orders SET status='paid'")
         bot = SimpleNamespace(send_message=AsyncMock(side_effect=RuntimeError("offline")))
         self.assertFalse(asyncio.run(self.shop.deliver_order(1, bot)))
-        with sqlite3.connect(self.shop.DB_PATH) as db:
+        with database(self.shop.DB_PATH) as db:
             self.assertEqual(db.execute("SELECT status FROM orders").fetchone()[0], "delivery_failed")
             self.assertEqual(db.execute("SELECT status FROM stock").fetchone()[0], "reserved")
         bot.send_message = AsyncMock()
@@ -124,7 +142,7 @@ class NewSkillTemplateTests(unittest.TestCase):
         bot = SimpleNamespace(send_message=AsyncMock())
         asyncio.run(self.shop.button_handler(SimpleNamespace(callback_query=query), SimpleNamespace(bot=bot)))
         bot.send_message.assert_not_called()
-        with sqlite3.connect(self.shop.DB_PATH) as db:
+        with database(self.shop.DB_PATH) as db:
             self.assertEqual(db.execute("SELECT status FROM orders").fetchone()[0], "pending")
 
     def test_matching_payment_delivers_to_buyer(self):
@@ -137,7 +155,7 @@ class NewSkillTemplateTests(unittest.TestCase):
         asyncio.run(self.shop.button_handler(SimpleNamespace(callback_query=query), SimpleNamespace(bot=bot)))
         bot.send_message.assert_awaited_once()
         self.assertEqual(bot.send_message.call_args.args[0], 42)
-        with sqlite3.connect(self.shop.DB_PATH) as db:
+        with database(self.shop.DB_PATH) as db:
             self.assertEqual(db.execute("SELECT status FROM orders").fetchone()[0], "done")
 
     def test_payment_detail_preserves_reference_and_bounds_request(self):
@@ -185,7 +203,7 @@ class NewSkillTemplateTests(unittest.TestCase):
             SimpleNamespace(callback_query=query),
             SimpleNamespace(bot=SimpleNamespace(send_photo=AsyncMock())),
         ))
-        with sqlite3.connect(self.shop.DB_PATH) as db:
+        with database(self.shop.DB_PATH) as db:
             amount = db.execute(
                 "SELECT payment_amount FROM orders WHERE tripay_ref='NEW'"
             ).fetchone()[0]
@@ -199,10 +217,10 @@ class NewSkillTemplateTests(unittest.TestCase):
 
     def test_documentation_pipeline_does_not_pass_scripts_as_arguments(self):
         for path in (SKILLS / "documentation-site").rglob("*.md"):
-            self.assertNotIn("python3 section_*.py", path.read_text(), str(path))
+            self.assertNotIn("python3 section_*.py", path.read_text(encoding="utf-8"), str(path))
 
     def test_delivery_concurrent_calls_send_once(self):
-        with sqlite3.connect(self.shop.DB_PATH) as db:
+        with database(self.shop.DB_PATH) as db:
             db.execute("UPDATE orders SET status='paid'")
         async def scenario():
             started, release = asyncio.Event(), asyncio.Event()
