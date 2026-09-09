@@ -51,6 +51,15 @@ LEGACY_BUNDLED_SKILL_DIGESTS: dict[str, tuple[str, ...]] = {
 # shipped under it. This preserves safe upgrades without retaining old product
 # branding in source or deleting user-modified copies.
 RETIRED_BUNDLED_SKILL_DIGESTS: dict[str, tuple[str, ...]] = {
+    # Legacy shell helpers now ship as folders; preserve user-edited flat copies.
+    "fc8ca61d7ee9288203bdec2029ee964e4f1355b54dd8c0c0fc87e23874e838d2": (
+        "63ebd390fbbcd4c0c077420357206e393c85646ab666ce1276f5d49ecc60344d",
+        "29cf2e4001d7fdfac7405a2e39ad373f653a3d2f191d87fcf3bb003d0a8fb4bc",
+    ),
+    "ae5364fd8b2e5bcffe44e5c07e56374349312c7efecbb36a64f3e7adf0e36d7d": (
+        "53a585326838c47d8a501143c94963853a1d91d04a53cf9123a1b5ef833a68d7",
+        "f9a99c0c6f30fd4d5844e3f862d7a0dd03fa2d2c2a788b78fd3ad95d2fadfb61",
+    ),
     # Four flat skills became folder skills so their companion files could ship.
     # Without these entries an existing install keeps loading the stale flat copy
     # forever: _find_skill() checks `<name>.md` before `<name>/SKILL.md`, so the
@@ -288,6 +297,43 @@ BUNDLED_SKILL_UPDATE_DIGESTS: dict[str, tuple[str, ...]] = {
         # same content with CRLF (Windows checkout)
         "3bc375a999d48666cf809245298864710879ba4a6a799a617595ddec06114b78",
     ),
+    # PR #263 shipped these skills before their runtime and security fixes.
+    "documentation-site/SKILL.md": (
+        "b40ffb22f84ed44e345b2e6aa8ee70ed26c48096878faa50bb209d70119677de",
+        "f26c4fea39cc62d4405244db3eea23ae73ea19a60d6193eebb3d6c342e4c8d61",
+    ),
+    "documentation-site/references/content-scraping.md": (
+        "8719e6663602cc2a5f2ba8cf17e986ff27b851178e78961aa5e9ad17fa3c9777",
+        "487de585dc9e6b0f1470b27404e04a11b38f13484214f7a2a68267bf21311f70",
+    ),
+    "documentation-site/references/custom-static-site.md": (
+        "411957dc6e54f28b2dc692ee4088eac242dd4c285243ab53934982b5a5aad1e6",
+        "6d6a7e145c5b4e978d74c5e4d6f2dddb8e7ffa4deea69e246b3c43a13a32ec85",
+    ),
+    "fork-and-rebrand-webapp/SKILL.md": (
+        "4d06b5c09800de0a88030ea4b2cc7f8c79b46090e591cec4c06bbba1e1c12fd8",
+        "a9e69de9392f696c59d6f7c7371fe7c5029a30c11b6f9ea1355ecf85bf10d984",
+    ),
+    "manim-video.md": (
+        "5cefd9f3ff98ca78f033e4b3c4bd6279af57c58d9e3e427ee9ff4959b9a7b587",
+        "1fb34d63736ceccca7f70a26d7c87ed194e1adef8db93992a87f9701f5a89e06",
+    ),
+    "riset-airdrop/scripts/fetch-latest-airdrops.py": (
+        "d70d54d9bf6a74411e3a5249bb0cfa3e01b5a93a2a304f247b19b31922579b32",
+        "1c0a42d66c3ad9edb16b3c570a960afaf7e43b48967731aa4458c6c38ac373cf",
+    ),
+    "telegram-commerce-bot/SKILL.md": (
+        "e00249d65c1aa78a12296f9e4507bb2e522022858c189c4517cd49e6af2e2406",
+        "b79be31e7cc5ccbbbe346b42f8f55637447f6bb2178f072cf9b58efad9827082",
+    ),
+    "telegram-commerce-bot/templates/bot-template.py": (
+        "941cd66a3f144ea81f7fa7da284456d743de03d667fa233992b8d4a309141cee",
+        "0c1d365e6f13b3c58481dd8d82f390998f560742b86287c0957b6c2a01da8eff",
+    ),
+    "telegram-commerce-bot/templates/tripay-gateway.py": (
+        "87a77f4ab5d4dc3ac0b2f1aa15ff6d9a7223e22d02b0d09864d5fe384a57fc05",
+        "57a049acf9bd10f3647ad42e86723ac6d9357e3fbe0e28a9dd419d264b6f7812",
+    ),
 }
 
 
@@ -386,11 +432,14 @@ def _refresh_known_bundled_revisions(source: Path) -> int:
             continue
         try:
             resolved = path.resolve(strict=False)
-            if not resolved.parent.samefile(public_root):
+            if not resolved.is_relative_to(public_root):
                 continue
             digest = hashlib.sha256(path.read_bytes()).hexdigest()
             if digest in expected_digests:
-                path.unlink()
+                # Nested folders already exist, so seed_skills will not recopy
+                # them. Refresh only the exact known old file in place.
+                path.write_bytes((source / name).read_bytes())
+                _chmod_private(path, 0o600)
                 removed += 1
         except OSError:
             pass

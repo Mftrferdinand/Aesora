@@ -48,57 +48,30 @@ iniochobot/
 - Sandbox: `https://tripay.co.id/api-sandbox`
 - Production: `https://tripay.co.id/api`
 
-**QRIS Generation (`tripay_gateway.py`):**
+**Setup templates (paths relative to this skill directory):**
 
-```python
-class TripayPayment:
-    def __init__(self, api_key, private_key, merchant_code):
-        self.base_url = "https://tripay.co.id/api-sandbox"  # or api for production
-
-    def _sign(self, merchant_ref, amount):
-        raw = f"{self.merchant_code}{merchant_ref}{amount}"
-        return hmac.new(self.private_key.encode(), raw.encode(), hashlib.sha256).hexdigest()
-
-    def create_qris(self, amount, customer_name="Customer", order_id=None, expired=24):
-        payload = {
-            "method": "QRISC",        # QRIS Customizable (fixed amount)
-            "merchant_ref": order_id or f"INV-{uuid.uuid4().hex[:10].upper()}",
-            "amount": amount,
-            "customer_name": customer_name[:50],
-            "order_items": [{"name": "Digital Product", "price": amount, "quantity": 1}],
-            "expired_time": int((datetime.now().timestamp() + expired * 3600)),
-            "signature": self._sign(merchant_ref, amount)
-        }
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        r = requests.post(f"{self.base_url}/transaction/create", json=payload, headers=headers)
-        data = r.json()
-        if data.get("success"):
-            return {
-                "success": True, "reference": data["data"]["reference"],
-                "qr_url": data["data"]["qr_url"],     # QR PNG image URL
-                "qr_string": data["data"]["qr_string"], # Raw QR string
-                "pay_url": data["data"]["pay_url"],    # Payment page
-                "amount": data["data"]["amount"],
-            }
-        return {"success": False, "error": data.get("message")}
-
-    def check_payment(self, reference):
-        """Poll payment status by Tripay reference"""
-        headers = {"Authorization": f"Bearer {self.api_key}"}
-        r = requests.get(f"{self.base_url}/transaction/detail?reference={reference}", headers=headers)
-        data = r.json()
-        if data.get("success"):
-            return {"success": True, "status": data["data"]["status"]}  # UNPAID|PAID|EXPIRED
-        return {"success": False}
-
-    @staticmethod
-    def verify_callback(callback_data, private_key, merchant_code):
-        """Verify Tripay webhook signature (HMAC-SHA256)"""
-        signature = callback_data.pop("signature", "")
-        payload = json.dumps(callback_data, separators=(',', ':'))
-        expected = hmac.new(private_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        return signature == expected
+```bash
+mkdir -p "$HOME/shopbot"
+cp templates/bot-template.py "$HOME/shopbot/bot.py"
+cp templates/tripay-gateway.py "$HOME/shopbot/tripay_gateway.py"
+cd "$HOME/shopbot"
+python3 -m venv .venv
+.venv/bin/python -m pip install 'python-telegram-bot>=20,<23' requests
+# Configure environment credentials before starting; no live transaction for verification.
+.venv/bin/python -m py_compile bot.py tripay_gateway.py
 ```
+
+The underscore destination `tripay_gateway.py` is mandatory for the bot's import.
+Use the complete module in `templates/tripay-gateway.py`, not a partial inline duplicate.
+It defaults to sandbox. Confirm enabled payment channels with the merchant; do not infer
+channel semantics from `QRIS`/`QRISC` names alone.
+
+**Callback contract:** Per https://tripay.co.id/developer, pass the exact request body
+bytes, the `X-Callback-Signature` header and private key to
+`TripayPayment.verify_callback(raw_body, signature, private_key)`. Verify before JSON
+parsing; never pop a signature field or reserialize JSON. Signature validity alone is
+not authorization: require the expected callback event and `PAID`, match stored
+reference, merchant_ref and amount, and deduplicate before fulfillment.
 
 ## Bot Flow (Inline-Keyboard UX)
 
@@ -129,39 +102,23 @@ await query.edit_message_text(
 
 ## Auto-Delivery
 
-```python
-def deliver_order(order_id, bot):
-    """Called when payment confirmed (poll or webhook)"""
-    conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT user_id, product, status FROM orders WHERE id=?", (order_id,))
-    row = c.fetchone()
-    if not row or row[2] == 'done':
-        return False
-    buyer_id, product = row[0], row[1]
+Use `await deliver_order(order_id, context.bot)` from `templates/bot-template.py`.
+Only a verified payment may transition `pending` → `paid`. The template checks
+buyer ownership, reference and exact gateway total (`payment_amount`, including fees)
+before doing so. Legacy rows with no saved total fail closed and need reconciliation;
+never infer their payable amount from catalog price. Delivery reserves
+stock in `BEGIN IMMEDIATE`, awaits the Telegram send, then marks `done`.
+A failed send retains the same credential for that buyer (`delivery_failed`);
+retries never allocate another credential. A crash leaving `delivering` requires
+operator reconciliation before resetting to `delivery_failed`. Telegram and SQLite
+cannot provide exactly-once delivery across a crash: a retry can repeat the same
+message, but must not consume another stock item. Never release exposed stock.
 
-    # Take one from stock
-    c.execute("SELECT id, credential FROM stock WHERE product=? AND status='available' LIMIT 1", (product,))
-    stock = c.fetchone()
-    if not stock:
-        bot.send_message(ADMIN_ID, f"⚠️ Stok habis: {product} (Order #{order_id})")
-        return False
-
-    stock_id, credential = stock
-    c.execute("UPDATE stock SET status='used', used_by=? WHERE id=?", (buyer_id, stock_id))
-    c.execute("UPDATE orders SET status='done', paid_at=? WHERE id=?", (datetime.now().isoformat(), order_id))
-    conn.commit()
-    conn.close()
-
-    # Send to buyer
-    bot.send_message(buyer_id,
-        f"✅ *Pembayaran Terkonfirmasi!*\n\n"
-        f"Order #{order_id}: {product}\n\n"
-        f"🔑 Kredensial:\n`{credential}`",
-        parse_mode="Markdown"
-    )
-    return True
-```
+This is a starter manual-check flow, not a production webhook/outbox service.
+Before production, persist merchant_ref before API creation, reserve inventory at
+checkout, reconcile uncertain creates, enforce private chats and rate limits,
+protect the credential DB with owner-only permissions, and configure durable
+payment polling/webhooks. Do not claim full automatic detection from this template.
 
 ## Payment Detection: Poll vs Webhook
 
@@ -201,15 +158,15 @@ CREATE TABLE stock (
 
 ## Pitfalls
 
-- **Tripay sandbox QR codes are static/fake** — payments in sandbox don't actually trigger `PAID` status. Test in production with real QR after setup.
+- **No live payments for verification.** Use offline fixtures and the documented sandbox workflow. Production transactions require explicit user authorization.
 - **Callback data 64-byte limit** — don't put product names or long IDs in `callback_data`. Use short codes (e.g., `netflix_1m`) mapped in a dict.
-- **`deliver_order` from async context** — bot's `send_message` is async. When called from a sync webhook handler, use `asyncio` to schedule the send. From `CallbackQueryHandler` (async), call directly.
+- **`deliver_order` is async:** await it and handle False; never announce delivery merely because a task was scheduled.
 - **Product name matching** — stock name in `/addstock_` must match `PRODUCTS[name]['name']` exactly. Use exact copy from the products dict.
 - **Termux background process** — bot polls Telegram, never exits. Use `terminal(background=true, notify_on_complete=false)` for daemon mode. Do NOT set `notify_on_complete=true` — it will never "complete."
-- **Tripay `method: QRISC`** — the `C` suffix = Customizable (fixed nominal). Use `QRIS` (without C) for customer-entered amount (not recommended for bot shops).
-- **`signature` field must be lowercase** in Tripay callback verification. The `verify_callback` method pops `signature` from the dict before re-signing the rest.
+- **Payment channel:** select an enabled merchant channel from Tripay's current API documentation; do not guess QRIS code semantics.
+- **Callback signature:** use the X-Callback-Signature header and unchanged raw bytes, not a JSON signature field.
 - **Duitku as alternative to Tripay:** Users may prefer Duitku over Tripay. Same pattern: register at duitku.com → get API key → generate QRIS → poll/callback. If the user's Duitku account is not yet approved, build the bot with mocked payment functions and swap in Duitku later. Keep `processDeposit()` as the single integration point.
-- **Telegram bot tokens (`123:ABC`) in plain text trigger secret detection.** When debugging/testing, use `execute_code` with string concat or write to `.py` file then read programmatically.
+- **Secrets:** use environment variables; do not print tokens or bypass secret detection. Use dummy values in offline tests.
 
 ## See Also
 

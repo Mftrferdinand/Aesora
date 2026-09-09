@@ -9,13 +9,13 @@ Default: 7 days back.
 
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 DAYS_BACK = int(sys.argv[1]) if len(sys.argv) > 1 else 7
-SINCE = datetime.utcnow() - timedelta(days=DAYS_BACK)
-API = 'https://airdrops.io/wp-json/wp/v2/airdrop?per_page=50&_fields=title,link,date'
+SINCE = datetime.now(timezone.utc) - timedelta(days=DAYS_BACK)
+API = 'https://airdrops.io/wp-json/wp/v2/airdrop?per_page=50&_fields=title,link,date,date_gmt'
 
 req = Request(API, headers={
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -33,7 +33,9 @@ except json.JSONDecodeError as e:
 
 recent = []
 for airdrop in data:
-    added = datetime.fromisoformat(airdrop['date'].replace('Z', '+00:00'))
+    added = datetime.fromisoformat((airdrop.get('date_gmt') or airdrop['date']).replace('Z', '+00:00'))
+    if added.tzinfo is None:
+        added = added.replace(tzinfo=timezone.utc)
     if added >= SINCE:
         recent.append(airdrop)
 

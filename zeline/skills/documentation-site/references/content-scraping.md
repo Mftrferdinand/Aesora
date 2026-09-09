@@ -317,7 +317,7 @@ This fix runs AFTER `clean_all_slang.py` and `fix_all_issues.py` as a separate p
 
 ```
 1. python3 generate_v8.py              # Home + soul-guide sections
-2. python3 section_*.py                # Deep content sections
+2. for script in section_*.py; do [ -f "$script" ] || continue; python3 "$script" || exit; done                # Deep content sections
 3. python3 clean_all_slang.py          # Clean slang from ALL HTML files
 4. python3 fix_all_issues.py           # Fix double-escaped entities, "Copy" leaks, raw backticks
 5. python3 fix_tables.py               # Fix pipe-delimited text → proper HTML tables

@@ -1,7 +1,8 @@
 # Telegram Commerce Bot — Starter Template
 # Copy this file. Fill in TOKEN + Tripay credentials. Run with python3.
 
-import os, sys, sqlite3, logging, json, uuid, requests
+import os, sys, sqlite3, logging, json, uuid, requests, asyncio
+from contextlib import closing
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -10,13 +11,13 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ─── CONFIG — Fill these in ───
-TOKEN = "YOUR_BOT_TOKEN"
-ADMIN_ID = 1234567890
+TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+ADMIN_ID = int(os.environ.get("SHOP_ADMIN_ID", "0"))
 DB_PATH = os.path.expanduser("~/shopbot/database.db")
 
-TRIPAY_API_KEY = "YOUR_API_KEY"
-TRIPAY_PRIVATE_KEY = "YOUR_PRIVATE_KEY"
-TRIPAY_MERCHANT_CODE = "Txxxxx"
+TRIPAY_API_KEY = os.environ.get("TRIPAY_API_KEY", "")
+TRIPAY_PRIVATE_KEY = os.environ.get("TRIPAY_PRIVATE_KEY", "")
+TRIPAY_MERCHANT_CODE = os.environ.get("TRIPAY_MERCHANT_CODE", "")
 
 # Import Tripay gateway
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -34,6 +35,7 @@ PRODUCTS = {
 
 # ─── DATABASE ───
 def init_db():
+    os.makedirs(os.path.dirname(os.path.abspath(DB_PATH)), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS orders (
@@ -47,6 +49,11 @@ def init_db():
         product TEXT, credential TEXT,
         status TEXT DEFAULT 'available', used_by INTEGER
     )''')
+    columns = {row[1] for row in c.execute('PRAGMA table_info(orders)')}
+    if 'stock_id' not in columns:
+        c.execute('ALTER TABLE orders ADD COLUMN stock_id INTEGER')
+    if 'payment_amount' not in columns:
+        c.execute('ALTER TABLE orders ADD COLUMN payment_amount INTEGER')
     conn.commit()
     conn.close()
 
@@ -113,7 +120,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Membuat QRIS...")
 
         order_uuid = f"ORDER-{uuid.uuid4().hex[:8].upper()}"
-        qris = tripay.create_qris(
+        qris = await asyncio.to_thread(tripay.create_qris,
             amount=p['price'],
             customer_name=query.from_user.username or "Customer",
             order_id=order_uuid,
@@ -131,8 +138,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
         c.execute(
-            "INSERT INTO orders (user_id, username, product, price, status, tripay_ref, created_at) VALUES (?, ?, ?, ?, 'pending', ?, ?)",
-            (user_id, query.from_user.username or "unknown", p['name'], p['price'], qris['reference'], datetime.now().isoformat())
+            "INSERT INTO orders (user_id, username, product, price, status, tripay_ref, created_at, payment_amount) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)",
+            (user_id, query.from_user.username or "unknown", p['name'], p['price'], qris['reference'], datetime.now().isoformat(), qris['amount'])
         )
         order_id = c.lastrowid
         conn.commit()
@@ -155,10 +162,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif data.startswith("check_"):
-        order_id = int(data.replace("check_", ""))
+        try:
+            order_id = int(data.removeprefix("check_"))
+        except ValueError:
+            return
         conn = sqlite3.connect(DB_PATH)
         c = conn.cursor()
-        c.execute("SELECT tripay_ref, product, price, status FROM orders WHERE id=?", (order_id,))
+        c.execute("SELECT tripay_ref, product, payment_amount, status FROM orders WHERE id=? AND user_id=?", (order_id, user_id))
         row = c.fetchone()
         conn.close()
 
@@ -168,11 +178,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         ref, product, price, status = row
 
-        check = tripay.check_payment(ref)
-        if check.get("success") and check.get("status") == "PAID":
-            deliver_order(order_id, context.bot)
+        check = await asyncio.to_thread(tripay.check_payment, ref)
+        if (check.get("success") is True and check.get("status") == "PAID"
+                and check.get("reference") == ref and type(price) is int and price > 0
+                and check.get("amount") == price):
+            with closing(sqlite3.connect(DB_PATH)) as conn:
+                conn.execute("UPDATE orders SET status='paid', paid_at=? WHERE id=? AND status='pending'",
+                             (datetime.now().isoformat(), order_id))
+                conn.commit()
+            delivered = await deliver_order(order_id, context.bot)
             await query.edit_message_text(
-                "✅ *Pembayaran Terkonfirmasi!*\n\nKredensial sudah dikirim.",
+                ("✅ Pembayaran terkonfirmasi. Kredensial sudah dikirim." if delivered
+                 else "Pembayaran terkonfirmasi; pengiriman tertunda. Hubungi admin."),
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Menu Utama", callback_data="home")]]),
                 parse_mode="Markdown"
             )
@@ -201,50 +218,57 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ─── DELIVERY ───
-def deliver_order(order_id, bot):
+async def deliver_order(order_id, bot):
+    """Reserve stock atomically; only mark done after an awaited Telegram send.
+
+    A crashed 'delivering' order needs operator reconciliation. Never release a
+    reserved credential on ambiguous network failure: it may already be exposed.
+    """
     conn = sqlite3.connect(DB_PATH)
-    c = conn.cursor()
-    c.execute("SELECT user_id, product, status FROM orders WHERE id=?", (order_id,))
-    row = c.fetchone()
-    if not row or row[2] == 'done':
-        conn.close()
-        return False
-
-    buyer_id, product = row[0], row[1]
-    c.execute("SELECT id, credential FROM stock WHERE product=? AND status='available' LIMIT 1", (product,))
-    stock = c.fetchone()
-
-    if not stock:
-        conn.close()
-        bot.send_message(ADMIN_ID, f"⚠️ Stok habis: {product} (Order #{order_id})")
-        return False
-
-    stock_id, credential = stock
-    c.execute("UPDATE stock SET status='used', used_by=? WHERE id=?", (buyer_id, stock_id))
-    c.execute("UPDATE orders SET status='done', paid_at=? WHERE id=?", (datetime.now().isoformat(), order_id))
-    conn.commit()
-    conn.close()
-
-    import asyncio
-    async def send():
-        await bot.send_message(
-            buyer_id,
-            f"✅ *Pembayaran Terkonfirmasi!*\n\n"
-            f"Order #{order_id}: {product}\n\n"
-            f"🔑 Kredensial:\n`{credential}`\n\n"
-            f"Terima kasih! 🙏",
-            parse_mode="Markdown"
-        )
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.create_task(send())
+        conn.execute('BEGIN IMMEDIATE')
+        row = conn.execute(
+            'SELECT user_id, product, status, stock_id FROM orders WHERE id=?',
+            (order_id,)).fetchone()
+        if row and row[2] == 'done':
+            conn.rollback()
+            return True
+        if not row or row[2] not in ('paid', 'delivery_failed'):
+            conn.rollback()
+            return False
+        buyer_id, product, _, reserved_id = row
+        if reserved_id is not None:
+            stock = conn.execute(
+                "SELECT id, credential FROM stock WHERE id=? AND status='reserved' AND used_by=?",
+                (reserved_id, buyer_id)).fetchone()
         else:
-            loop.run_until_complete(send())
-    except:
-        pass
-
-    logger.info(f"✅ Order #{order_id} delivered to {buyer_id}")
+            stock = conn.execute(
+                "SELECT id, credential FROM stock WHERE product=? AND status='available' ORDER BY id LIMIT 1",
+                (product,)).fetchone()
+        if stock:
+            stock_id, credential = stock
+            conn.execute("UPDATE stock SET status='reserved', used_by=? WHERE id=?", (buyer_id, stock_id))
+            conn.execute("UPDATE orders SET status='delivering', stock_id=? WHERE id=?", (stock_id, order_id))
+        conn.commit()
+    finally:
+        conn.close()
+    if not stock:
+        await bot.send_message(ADMIN_ID, f"Stok tidak tersedia: {product} (Order #{order_id})")
+        return False
+    try:
+        await bot.send_message(
+            buyer_id, f"Pembayaran terkonfirmasi!\nOrder #{order_id}: {product}\n\nKredensial:\n{credential}\n\nTerima kasih!")
+    except Exception:
+        with closing(sqlite3.connect(DB_PATH)) as conn:
+            conn.execute("UPDATE orders SET status='delivery_failed' WHERE id=? AND status='delivering'", (order_id,))
+            conn.commit()
+        logger.warning('Delivery failed for order #%s; reserved stock retained', order_id)
+        return False
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        conn.execute("UPDATE stock SET status='used' WHERE id=?", (stock_id,))
+        conn.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
+        conn.commit()
+    logger.info('Order #%s delivered', order_id)
     return True
 
 # ─── ADMIN COMMANDS ───
@@ -283,6 +307,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ─── MAIN ───
 def main():
+    if not all((TOKEN, ADMIN_ID, TRIPAY_API_KEY, TRIPAY_PRIVATE_KEY, TRIPAY_MERCHANT_CODE)):
+        raise SystemExit('Set TELEGRAM_BOT_TOKEN, SHOP_ADMIN_ID and TRIPAY_* environment variables')
     init_db()
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
