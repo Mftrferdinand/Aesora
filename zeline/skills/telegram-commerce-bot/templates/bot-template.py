@@ -2,6 +2,7 @@
 # Copy this file. Fill in TOKEN + Tripay credentials. Run with python3.
 
 import os, sys, sqlite3, logging, json, uuid, requests, asyncio
+from contextlib import closing
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
@@ -181,9 +182,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if (check.get("success") is True and check.get("status") == "PAID"
                 and check.get("reference") == ref and type(price) is int and price > 0
                 and check.get("amount") == price):
-            with sqlite3.connect(DB_PATH) as conn:
+            with closing(sqlite3.connect(DB_PATH)) as conn:
                 conn.execute("UPDATE orders SET status='paid', paid_at=? WHERE id=? AND status='pending'",
                              (datetime.now().isoformat(), order_id))
+                conn.commit()
             delivered = await deliver_order(order_id, context.bot)
             await query.edit_message_text(
                 ("✅ Pembayaran terkonfirmasi. Kredensial sudah dikirim." if delivered
@@ -257,13 +259,15 @@ async def deliver_order(order_id, bot):
         await bot.send_message(
             buyer_id, f"Pembayaran terkonfirmasi!\nOrder #{order_id}: {product}\n\nKredensial:\n{credential}\n\nTerima kasih!")
     except Exception:
-        with sqlite3.connect(DB_PATH) as conn:
+        with closing(sqlite3.connect(DB_PATH)) as conn:
             conn.execute("UPDATE orders SET status='delivery_failed' WHERE id=? AND status='delivering'", (order_id,))
+            conn.commit()
         logger.warning('Delivery failed for order #%s; reserved stock retained', order_id)
         return False
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn:
         conn.execute("UPDATE stock SET status='used' WHERE id=?", (stock_id,))
         conn.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
+        conn.commit()
     logger.info('Order #%s delivered', order_id)
     return True
 
