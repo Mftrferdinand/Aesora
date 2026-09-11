@@ -60,7 +60,7 @@ _URL_RE = re.compile(r"https?://[^\s<>\])}]+")
 # terasa "nggak ngapa-ngapain" lalu harus ditap 2x).
 _MODELS_CACHE: dict[str, tuple[float, list[str]]] = {}
 _MODEL_META_CACHE: dict[str, tuple[float, dict[str, dict[str, Any]]]] = {}
-_MODELS_CACHE_TTL = 300.0  # detik
+_MODELS_CACHE_TTL = 60.0  # detik — diperpendek agar recovery outage/perubahan 9Router live cepat tercermin di picker
 
 # Retry untuk error jaringan sementara. Method yang MENGIRIM hasil ke user
 # diretry supaya reply tidak hilang saat koneksi Termux drop; getUpdates &
@@ -1234,7 +1234,13 @@ def _provider_picker_payload(providers: list[dict[str, str]], current_slug: str)
     return text, {"inline_keyboard": rows}
 
 
-def _fetch_models_catalog(base_url: str, api_key: str, *, timeout: int = 12) -> tuple[list[str], dict[str, dict[str, Any]]]:
+def _fetch_models_catalog(
+    base_url: str,
+    api_key: str,
+    *,
+    timeout: int = 12,
+    force_refresh: bool = False,
+) -> tuple[list[str], dict[str, dict[str, Any]]]:
     """Ambil /models SEKALI lalu isi kedua cache (id list + metadata per id).
 
     Mendukung berbagai format (OpenAI, Anthropic, Ollama, vLLM) dan endpoint
@@ -1246,7 +1252,7 @@ def _fetch_models_catalog(base_url: str, api_key: str, *, timeout: int = 12) -> 
     now = time.monotonic()
     cached_ids = _MODELS_CACHE.get(base)
     cached_meta = _MODEL_META_CACHE.get(base)
-    if cached_ids and cached_meta and now - cached_ids[0] < _MODELS_CACHE_TTL:
+    if not force_refresh and cached_ids and cached_meta and now - cached_ids[0] < _MODELS_CACHE_TTL:
         return cached_ids[1], cached_meta[1]
 
     endpoints = [f"{base}/models"]
@@ -1302,14 +1308,18 @@ def _fetch_models_catalog(base_url: str, api_key: str, *, timeout: int = 12) -> 
     return ids, meta
 
 
-def _discover_provider_models(provider: dict[str, str]) -> list[str]:
-    ids, _ = _fetch_models_catalog(provider.get("base_url", ""), provider.get("api_key", ""))
+def _discover_provider_models(provider: dict[str, str], *, force_refresh: bool = False) -> list[str]:
+    ids, _ = _fetch_models_catalog(
+        provider.get("base_url", ""),
+        provider.get("api_key", ""),
+        force_refresh=force_refresh,
+    )
     return ids or ([provider.get("model", "")] if provider.get("model") else [])
 
 
-def _discover_models() -> list[str]:
+def _discover_models(*, force_refresh: bool = False) -> list[str]:
     """Ambil katalog model live dari provider OpenAI-compatible."""
-    ids, _ = _fetch_models_catalog(config.BASE_URL, config.API_KEY, timeout=20)
+    ids, _ = _fetch_models_catalog(config.BASE_URL, config.API_KEY, timeout=20, force_refresh=force_refresh)
     return ids or ([config.MODEL] if config.MODEL else [])
 
 
@@ -1851,6 +1861,12 @@ def _handle_command_update(
         return True
     if command == "/model" and not args.strip():
         providers = _configured_providers()
+        # Saat /model dibuka ulang secara eksplisit, refresh katalog provider aktif
+        # agar model yang baru online / pulih langsung muncul tanpa perlu restart gateway.
+        for item in providers:
+            base_url = item.get("base_url")
+            if base_url:
+                _fetch_models_catalog(base_url, item.get("api_key", ""), force_refresh=True)
         picker_text, markup = _provider_picker_payload(providers, _active_provider_slug(providers))
         _api_call(api, "sendMessage", chat_id=chat_id, text=picker_text, reply_markup=markup)
         return True
