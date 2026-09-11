@@ -86,6 +86,10 @@ class _TurnCancelled(Exception):
     """
 
 
+class _StreamReasoningExhausted(Exception):
+    """SSE berakhir di reasoning tanpa pernah menghasilkan jawaban final."""
+
+
 #: Balasan sentinel untuk turn yang dibatalkan user. Gateway MEMBANDINGKAN
 #: string ini untuk menekan pesan kedua setelah konfirmasi /stop-nya sendiri,
 #: jadi ia harus satu sumber, bukan literal yang diulang di tiap gateway.
@@ -351,6 +355,7 @@ class Zeline:
         self,
         use_tools: bool = True,
         on_stream_delta: Callable[[str], None] | None = None,
+        force_stream: bool | None = None,
     ) -> dict[str, Any]:
         if not self.api_key:
             raise ZelineError("API key not configured. Run `zeline setup`.")
@@ -374,13 +379,24 @@ class Zeline:
                         + "\n</trusted_runtime_skill>"
                     )
                     break
-        streaming = self._streaming_enabled()
+        streaming = (
+            self._streaming_enabled()
+            if force_stream is None
+            else bool(force_stream)
+        )
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": outbound_messages,
             "temperature": 0.7,
             "stream": streaming,
         }
+        # Model reasoning (mis. GLM/thinking variants) menaruh proses berpikirnya
+        # di `reasoning_content` SEBELUM menulis jawaban, dan itu tetap memakan
+        # kuota completion tokens. Tanpa budget eksplisit, provider memakai
+        # default kecil (mis. 1024) sehingga reasoning saja sudah menghabiskan
+        # seluruh kuota: stream selesai dengan content kosong dan
+        # finish_reason=length ("provider tidak mengirim jawaban teks").
+        payload["max_tokens"] = 8192
         if streaming:
             # Without this a streamed response reports no token usage at all.
             # Relays that don't understand it ignore the field; those that do
@@ -492,7 +508,20 @@ class Zeline:
         if stream:
             if self.protocol == "anthropic":
                 return self._consume_anthropic_stream(response, on_stream_delta)
-            return self._consume_openai_stream(response, on_stream_delta)
+            try:
+                return self._consume_openai_stream(response, on_stream_delta)
+            except _StreamReasoningExhausted:
+                # Some reasoning relays stream only internal thinking and then
+                # stop at the output limit, although their non-stream endpoint
+                # returns the final answer for the same conversation. Retry once
+                # without SSE; force_stream=False prevents recursive fallback.
+                if self._cancelled():
+                    raise _TurnCancelled()
+                return self._call_llm(
+                    use_tools=use_tools,
+                    on_stream_delta=on_stream_delta,
+                    force_stream=False,
+                )
 
         parsed = _parse_response(response.text)
         # Record token usage before shaping the message: the `usage` block lives
@@ -558,6 +587,8 @@ class Zeline:
         # tool_calls dirakit per index; argumen string di-append bertahap.
         tool_map: dict[int, dict[str, Any]] = {}
         usage_chunk: dict[str, Any] | None = None
+        reasoning_seen = False
+        finish_reason: str | None = None
         try:
             for raw_line in response.iter_lines(decode_unicode=True):
                 # /stop harus memutus SEKETIKA, bahkan saat token masih mengalir.
@@ -588,7 +619,12 @@ class Zeline:
                 choices = chunk.get("choices") if isinstance(chunk, dict) else None
                 if not choices:
                     continue
-                delta = choices[0].get("delta") or {}
+                choice = choices[0] or {}
+                if choice.get("finish_reason"):
+                    finish_reason = str(choice["finish_reason"])
+                delta = choice.get("delta") or {}
+                if delta.get("reasoning_content"):
+                    reasoning_seen = True
                 piece = delta.get("content")
                 if piece:
                     content_parts.append(str(piece))
@@ -619,6 +655,13 @@ class Zeline:
         message: dict[str, Any] = {"role": "assistant", "content": "".join(content_parts)}
         if tool_map:
             message["tool_calls"] = [tool_map[index] for index in sorted(tool_map)]
+        if not message["content"] and not message.get("tool_calls"):
+            # A reasoning-only stream is not a usable answer. Let _call_llm()
+            # retry the same request without SSE; do not expose internal thinking
+            # to the user as if it were the final response.
+            if reasoning_seen or finish_reason == "length":
+                raise _StreamReasoningExhausted()
+            raise ZelineError("Provider returned an empty streamed message.")
         return message
 
     def _consume_anthropic_stream(

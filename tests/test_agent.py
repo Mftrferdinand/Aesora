@@ -825,6 +825,29 @@ class StreamingTests(unittest.TestCase):
         self.assertEqual(reply, "Hello world")
         self.assertTrue(resp.closed)
 
+    def test_openai_stream_retries_non_stream_when_reasoning_exhausts_budget(self):
+        # GLM/Vantis can stream only reasoning_content until finish_reason=length,
+        # while the same request in non-stream mode returns the final answer.
+        stream_lines = [
+            'data: {"choices":[{"delta":{"reasoning_content":"internal plan"}}]}',
+            'data: {"choices":[{"delta":{},"finish_reason":"length"}],"usage":{"prompt_tokens":12,"completion_tokens":1024,"completion_tokens_details":{"reasoning_tokens":1024}}}',
+            "data: [DONE]",
+        ]
+        answer = {"choices": [{"message": {"role": "assistant", "content": "Jawaban dari retry."}}]}
+        stream_response = FakeStreamResponse(stream_lines)
+        agent = self.agent_module.Zeline(identity="telegram:stream-retry", tool_profile="safe")
+        with mock.patch.object(
+            self.agent_module.requests,
+            "post",
+            side_effect=[stream_response, FakeResponse(answer)],
+        ) as post:
+            reply = agent.send("halo")
+
+        self.assertEqual(reply, "Jawaban dari retry.")
+        self.assertTrue(stream_response.closed)
+        self.assertTrue(post.call_args_list[0].kwargs["json"]["stream"])
+        self.assertFalse(post.call_args_list[1].kwargs["json"]["stream"])
+
     def test_openai_stream_assembles_tool_call_then_finishes(self):
         # Round 1: streamed tool_call (arguments arrive fragmented across deltas).
         tool_lines = [
