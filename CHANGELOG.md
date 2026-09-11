@@ -1,4 +1,15 @@
 # Changelog
+## [0.3.4] — 2026-09-11
+
+### Added
+- **Nested Model & Route Picker**: Hierarchical Telegram `/model` selector (`router → route → model`) with compact single-column layout and safe 64-byte callbacks ([#260], [#261], [#262], [#263]).
+- **Essential Skills Corpus**: Shipped 10 new bundled skills including `material-design-icons` ([#263], [#265], [#266]).
+- **Live Catalog Refresh**: `/model` triggers live catalog rediscovery (`force_refresh=True`) and shortened cache TTL (60s) so provider outage recoveries show up immediately.
+
+### Fixed
+- **SSE Non-Stream Retry**: Automatically fallback to non-stream request when provider SSE stream finishes with reasoning-only tokens ([#267]).
+- **Bundled Skills & Picker Resilience**: Fixed bundled skill companion folder paths and hardened picker parsing ([#264]).
+
 ## [0.3.3] — 2026-09-06
 
 ### Added
@@ -315,7 +326,8 @@ release's documented one-liner keeps working after a newer release ships.
 Release notes for 0.2.5 and earlier are on the
 [releases page](https://github.com/Mftrferdinand/Zeline/releases).
 
-[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.3...main
+[Unreleased]: https://github.com/Mftrferdinand/Zeline/compare/v0.3.4...main
+[0.3.4]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.4
 [0.3.3]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.3
 [0.3.2]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.2
 [0.3.1]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.3.1
@@ -324,6 +336,14 @@ Release notes for 0.2.5 and earlier are on the
 [0.2.8]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.8
 [0.2.7]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.7
 [0.2.6]: https://github.com/Mftrferdinand/Zeline/releases/tag/v0.2.6
+[#260]: https://github.com/Mftrferdinand/Zeline/pull/260
+[#261]: https://github.com/Mftrferdinand/Zeline/pull/261
+[#262]: https://github.com/Mftrferdinand/Zeline/pull/262
+[#263]: https://github.com/Mftrferdinand/Zeline/pull/263
+[#264]: https://github.com/Mftrferdinand/Zeline/pull/264
+[#265]: https://github.com/Mftrferdinand/Zeline/pull/265
+[#266]: https://github.com/Mftrferdinand/Zeline/pull/266
+[#267]: https://github.com/Mftrferdinand/Zeline/pull/267
 [#181]: https://github.com/Mftrferdinand/Zeline/pull/181
 [#182]: https://github.com/Mftrferdinand/Zeline/pull/182
 [#183]: https://github.com/Mftrferdinand/Zeline/pull/183

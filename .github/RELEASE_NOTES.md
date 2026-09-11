@@ -17,7 +17,7 @@ Then `zeline setup`.
 One line on every POSIX platform — Termux, Linux, macOS, iSH:
 
 ```bash
-curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.3/install.sh && bash install.sh
+curl -fsSLO --proto '=https' --tlsv1.2 https://github.com/Mftrferdinand/Zeline/releases/download/v0.3.4/install.sh && bash install.sh
 ```
 
 The installer downloads the versioned wheel and verifies it against
@@ -118,7 +118,7 @@ default for installs that never set it.
 
 ### Installation
 
-See the [installation guide](https://github.com/Mftrferdinand/Zeline/blob/v0.3.3/docs/installation.md) for install commands on every supported platform, and the [changelog](https://github.com/Mftrferdinand/Zeline/blob/v0.3.3/CHANGELOG.md) for the full list of changes with links to every pull request.
+See the [installation guide](https://github.com/Mftrferdinand/Zeline/blob/v0.3.4/docs/installation.md) for install commands on every supported platform, and the [changelog](https://github.com/Mftrferdinand/Zeline/blob/v0.3.4/CHANGELOG.md) for the full list of changes with links to every pull request.
 
 ### Assets
 
